@@ -1,0 +1,28 @@
+<?php
+/*********
+ * @name: index.php - Point of entry
+ * @author: Chris Langtiw
+ *
+ * @description: Point of entry for database API system. It is intended as the MOD_REWRITE target 
+ * when using Apache server directives to redirect a RESTful URI. Defines a few path constants 
+ * and loads API core.
+ ****/
+
+// short alias to path delimiter
+define('DS', DIRECTORY_SEPARATOR);
+// name of the API core directory
+define('API_CORE_DIR', 'api_core');
+// absolute FS path to API core directory location excluding trailing slash
+define('API_CORE_LOCATION', DS.'www'.DS.'localhost'.DS.'public_html'.DS.'timeslips'.DS.'dev'.DS.'api');
+// API base URI location with leading and trailing slashes
+define('URI_BASE', DS.'timeslips'.DS.'dev'.DS.'api'.DS);
+
+
+// full path to API core
+define('API_CORE_PATH', API_CORE_LOCATION.DS.API_CORE_DIR.DS);
+// name and location of directory where models are located
+define('API_MODEL_PATH', API_CORE_PATH.'models');
+
+// load API core
+require(API_CORE_PATH.'core.php');
+
