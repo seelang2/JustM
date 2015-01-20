@@ -1,0 +1,96 @@
+API v3 Notes
+============
+
+References:
+http://www.ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm
+http://restful-api-design.readthedocs.org/en/latest/
+http://www.vinaysahni.com/best-practices-for-a-pragmatic-restful-api
+
+
+This API will implement an actual basic REST style interface, and also make some changes to the output as well from the original design meeting.
+
+While there is plenty of information on RESTful development out there, these notes will summarize the basics and describe how the API implements REST.
+
+
+
+Resources
+---------
+In a REST interface, resources are the information the API delivers. Resources are grouped into collections (lists). Resources may be returned as a collection or individually.
+
+Models
+------
+In this API our resources are represented by models. Models are classes that define the characteristics of the resource as defined in the database - table and field names, relationships to other resources, and so on. Resource models derive from a core Model class that provides the basic functionality and connectivity to access the resource.
+
+
+REST Request Methods
+--------------------
+In a RESTful API, requests are HTTP based and therefore are always based on resources (models) are nouns semantically named in plural form. Verbs are not used in the URI; instead, the HTTP request method will determine the action to take as follows:
+
+GET 	Retrieve either a resource collection or an individual resource if a key is given
+POST 	Create a new resource in a given collection with complete data
+PUT 	Update a resource in a collection with a given id with complete data
+PATCH 	Update a resource in a collection with a given id with partial data
+DELETE 	Delete a resource in a collection with a given id
+
+Example requests:
+
+Method 	URI Example 			Action
+GET		/users					Retrieve a collection of users
+GET 	/users/42 				Retrieve a single user resource whose key is 42
+POST 	/users 					Create a new user resource 
+PUT 	/users/42 				Update the user resource whose key is 42
+DELETE 	/users/42 				Delete the user resource whose key is 42
+
+
+
+URI Format
+----------
+Ref: RFC3916 http://tools.ietf.org/html/rfc3986#section-3.3
+
+baseurl/collection/id/subcollection/id
+
+baseurl
+	collection
+		id | subcollection
+			id
+
+After the base url, each path segment in the URI corresponds to a resource identifier (either as a collection or the id of a specific resource). 
+
+At a minimum one collection must be specified. This may then be followed by either a resource id or a subcollection. A subcollection may be followed with a resource id.
+
+Each path segment may be parameterized using semicolons (;) as a delimiter marking the beginning of the parameter block and separating each parameter. Parameter names are separated from their values using equals (=) as a delimiter. In the case where multiple values are allowed, the values are separated using commas (,).
+
+Standard query strings may also be appended to the URI. It is assumed that the query string parameters are for global options. Options for each resource should be given in the path segment for that resource.
+
+Example:
+api/users/21;fields=firstname,lastname,email/invoices;status=unpaid;limit=25
+
+
+URI Parameters
+--------------
+The following parameters are available in the API. 
+
+Parameter 	Location 	Description/Usage
+envelope	query		Indicates whether to use an envelope around the response. If a
+						wrapper is used, any metadata normally passed as HTTP headers
+						will be placed in the envelope instead. The request response 
+						data will be placed inside the 'response' property.
+
+
+
+
+API Response
+------------
+The response from the API will be in JSON format. Data will not be wrapped in an envelope by default. Metadata will normally be sent as response headers instead. Should an envelope be requested (via the envelope query parameter, using JSONP or by enabling debug mode) then a wrapper object will be used, and metadata will be placed in the wrapper rather than sent as response headers. The body of the response will be placed in the 'response' property of the wrapper.
+
+All custom headers supplied by the API will begin with the X-API- prefix to differentiate them from standard headers. 
+
+API Response Codes
+------------------
+The API will return a standard HTTP 1.1 response code on each request. The user agent will need to check the response code to determine the status of the request.
+
+
+
+
+
+
