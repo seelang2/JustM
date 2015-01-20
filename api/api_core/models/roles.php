@@ -5,8 +5,9 @@
 
 class Roles extends Model {
 
-	protected $tableName = 'roles';
+	public $tableName = 'roles';
 
+/*
 	protected $fields = array(
 		'id',
 		'name',
@@ -14,5 +15,6 @@ class Roles extends Model {
 		'description',
 		'color'
 	);
+*/
 
 }

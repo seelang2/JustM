@@ -40,10 +40,10 @@ if (DEBUG_MODE) $output->addDebugMessage('$_GET',$_GET);
 
 
 // hand the parameter array to the Dispatcher
-$params = Dispatcher::parseRequest($_SERVER['REQUEST_URI']);
-if (DEBUG_MODE) $output->addDebugMessage('request_params', $params);
+//$params = Dispatcher::parseRequest($_SERVER['REQUEST_URI']);
+//if (DEBUG_MODE) $output->addDebugMessage('request_params', $params);
 
-Dispatcher::route($params);
+Dispatcher::route();
 
 // just to test sending HTTP response code
 //header("HTTP/1.1 500 Internal Server Error");
