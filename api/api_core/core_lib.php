@@ -121,14 +121,12 @@ class Dispatcher {
 	/****
 
 	 **/
-	static function parseRequestParams() {
-		if (DEBUG_MODE) global $output;
+	static function parseRequestParams($request_uri) {
+		//if (DEBUG_MODE) global $output;
 
-		$requestParams = Dispatcher::parseRequest($_SERVER['REQUEST_URI']);
-		if (DEBUG_MODE) $output->addDebugMessage('request_params', $requestParams);
+		$requestParams = Dispatcher::parseRequest($request_uri);
+		if (DEBUG_MODE) Message::addDebugMessage('request_params', $requestParams);
 
-		
-		$c = 0;
 		$lastModel = null;
 
 		$parsedRequestParams = array(); // save a copy of the fully parsed request parameters
@@ -137,49 +135,27 @@ class Dispatcher {
 			
 			$params = Dispatcher::parsePath($path);
 
-			//if ($c > 0) $lastModel = &$model;
-			//if (class_exists($params['model'])) {
-
 			// this is a bit of a cheap shot. There should be a cleaner solution than
 			// testing for file existence. Between this and the class autoloader there
 			// must be a better solution.
 			if (file_exists(API_MODEL_PATH.$params['model'].'.php')) {
-				// if this is a valid class, we load the class
-				//$model = new $params['model']($lastModel);
+				// if this is a valid class, we set the model name
 				$model = $params['model'];
 				$parsedRequestParams[$model] = $params;
 
-				//$output->addDebugMessage($params['model'].'_parent', empty($lastModel) ? null : $lastModel->tableName);
-				//if (DEBUG_MODE) $output->addDebugMessage($params['model'].'_parent', $model->parentCollection == null ? null : $model->parentCollection->tableName);
 			} else {
 				// otherwise we assume it's a resource identifier
-				// (if the resulting query craps out later we generate a 400 Bad Request)
-				//$lastModel->setID($params['model']); // set the previous path's resource identifier
-				
+				// (if the resulting query craps out later we generate a 400 Bad Request at that time)
 				// rename the model property to id and copy over to current model
 				$params['id'] = $params['model'];
 				unset($params['model']);
 				foreach ($params as $key => $value) {
 					$parsedRequestParams[$lastModel][$key] = $value;
 				}
-				//$parsedRequestParams[strtolower(get_class($lastModel))]['id'] = $params['model'];
 
-
-
-				//if (DEBUG_MODE) $output->addDebugMessage($lastModel->tableName.'_id', $lastModel->id);
 			}
-
-			//if (DEBUG_MODE) $output->addDebugMessage('parsed_params'.$c, $params);
-
-			//if (DEBUG_MODE) $output->addDebugMessage('model'.$c, $model->tableName);
-			//$c++;
-			
-
 			$lastModel = $model;
 		}
-
-
-		//if (DEBUG_MODE) $output->addDebugMessage('queryTest', $model->queryTest());
 
 		return $parsedRequestParams;
 	} // parseResquestParams
@@ -194,11 +170,13 @@ class Dispatcher {
 	  to keep the code cleaner. In addition, the Model is responsible for instantiating the 
 	  appropriate related models based on the request parameters. 
 	 **/
-	static function route($options = null) {
-		if (DEBUG_MODE) global $output;
+	static function route(&$db, $request_uri, $options = null) {
+		//if (DEBUG_MODE) global $output;
 
-		$parsedRequestParams = Dispatcher::parseRequestParams();
-		if (DEBUG_MODE) $output->addDebugMessage('parsedRequestParams', $parsedRequestParams);
+		$parsedRequestParams = Dispatcher::parseRequestParams($request_uri);
+		if (DEBUG_MODE) Message::addDebugMessage('parsedRequestParams', $parsedRequestParams);
+
+
 
 	} // route
 
@@ -270,58 +248,84 @@ class Dispatcher {
 
 } // Dispatcher
 
+/****
+  Static output class
+  Message encapsulates output into a single static class. Because output is via JSON and HTTP 
+  headers instead of HTML, data is stored as keys inside associative arrays which get converted 
+  to JSON when render() is called.
+ **/
 class Message {
 
-	protected $message = array();
-	protected $headers = array();
-	protected $debugMessages = array();
+	static protected $message = array();
+	static protected $headers = array();
+	static protected $debugMessages = array();
+	static protected $data = null;
 
-	public function addHeader($key, $data) {
-		$this->headers[HEADER_PREFIX . $key] = $data;
+	/****
+	  Sets HTTP headers to be sent to the user agent. The keys in $headers will be 
+	  prefixed with the HEADER_PREFIX value. If an envelope is used, $headers will 
+	  be attached to the envelope instead of being passed as HTTP headers.
+	 **/
+	static public function addHeader($key, $data) {
+		Message::$headers[HEADER_PREFIX . $key] = $data;
 	}
 
-	public function addMessage($key, $data) {
-		$this->message[$key] = $data;
+	/****
+	  Adds a key to the response body. If an envelope is used the data is placed 
+	  inside a 'response' property of the envelope.
+	 **/
+	static public function addMessage($key, $data) {
+		Message::$message[$key] = $data;
 	}
 
-	public function addDebugMessage($key, $data) {
-		$this->debugMessages[$key] = $data;
+	/****
+	  Allows non-body debug data to be included in the response. 
+	  NOTE: Adding debug messages will always cause an envelope to be used 
+	  regardless of the DEBUG_MODE or $useEnvelope settings.
+	 **/
+	static public function addDebugMessage($key, $data) {
+		Message::$debugMessages[$key] = $data;
 	}
 
-	public function render($useEnvelope) {
+	/****
+	  Renders the queued data to the user agent.
+	  NOTE: Adding debug messages will always cause an envelope to be used 
+	  regardless of the DEBUG_MODE or $useEnvelope settings.
+	 **/
+	static public function render($useEnvelope) {
 		header('Content-Type: application/json');
 		
-		if ($useEnvelope) {
+		if ($useEnvelope || !empty(Messages::$debugMessages)) {
 			// if an envelope is used the header values will be placed in a wrapper
 			// and the data will be placed in a 'Response' property
-			$this->data = array(
-				'Response' => $this->message
+			Message::$data = array(
+				'Response' => Message::$message
 			);
 	
-			foreach ($this->headers as $header => $headerValue) {
-				$this->data[$header] = $headerValue;
+			foreach (Message::$headers as $header => $headerValue) {
+				Message::$data[$header] = $headerValue;
 			}
-			$this->data[HEADER_PREFIX.'Request-Duration'] = (int)((microtime(true) - $_SERVER['REQUEST_TIME_FLOAT']) * 1000) . 'ms';
+			Message::$data[HEADER_PREFIX.'Request-Duration'] = (int)((microtime(true) - $_SERVER['REQUEST_TIME_FLOAT']) * 1000) . 'ms';
 
 		} else {
 			// if no wrapper is used, the header values will be sent as proper response
 			// headers to the client
-			foreach ($this->headers as $header => $headerValue) {
+			foreach (Message::$headers as $header => $headerValue) {
 				header($header .': '. $headerValue);
 			}
 			header(HEADER_PREFIX.'Request-Duration: '. (int)((microtime(true) - $_SERVER['REQUEST_TIME_FLOAT']) * 1000) . 'ms');
-			$this->data = $this->message;
+			Message::$data = $this->message;
 		}
 
-		if (DEBUG_MODE) {
-			$this->data['debug'] = array();
-			foreach ($this->debugMessages as $header => $headerValue) {
-				$this->data['debug'][$header] = $headerValue;
+		if (DEBUG_MODE || !empty(Messages::$debugMessages)) {
+			Message::$data['debug'] = array();
+			foreach (Message::$debugMessages as $header => $headerValue) {
+				Message::$data['debug'][$header] = $headerValue;
 			}
 		}
-		echo json_encode($this->data);
+		echo json_encode(Message::$data);
 	} // render
-}
+} // Message
 
 
 /****

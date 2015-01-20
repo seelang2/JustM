@@ -14,7 +14,7 @@ require(API_CORE_PATH.'core_lib.php');
 //if (!DEBUG_MODE) header('Content Type: application/json');
 
 // prepare output renderer
-$output = new Message();
+//$output = new Message();
 
 // database initialization
 try {
@@ -28,26 +28,23 @@ try {
     //echo 'Connection failed: ' . $e->getMessage();
 	//exit('{"status":0,"message":"Connection to database server failed"}');
 	header("HTTP/1.1 500 Internal Server Error");
-	$output->addMessage('error_message','Connection to database server failed');
-	$output->render($useJsonEnvelope);
+	Message::addMessage('error_message','Connection to database server failed');
+	Message::render($useJsonEnvelope);
 	exit();
 }
 
 
-if (DEBUG_MODE) $output->addDebugMessage('$_SERVER',$_SERVER);
-if (DEBUG_MODE) $output->addDebugMessage('$_POST',$_POST);
-if (DEBUG_MODE) $output->addDebugMessage('$_GET',$_GET);
+if (DEBUG_MODE) Message::addDebugMessage('$_SERVER',$_SERVER);
+if (DEBUG_MODE) Message::addDebugMessage('$_POST',$_POST);
+if (DEBUG_MODE) Message::addDebugMessage('$_GET',$_GET);
 
 
-// hand the parameter array to the Dispatcher
-//$params = Dispatcher::parseRequest($_SERVER['REQUEST_URI']);
-//if (DEBUG_MODE) $output->addDebugMessage('request_params', $params);
-
-Dispatcher::route();
+// hand off the request to the Dispatcher
+Dispatcher::route($db, $_SERVER['REQUEST_URI']);
 
 // just to test sending HTTP response code
 //header("HTTP/1.1 500 Internal Server Error");
 
-$output->render($useJsonEnvelope);
-
+//$output->render($useJsonEnvelope);
+Message::render($useJsonEnvelope);
 
