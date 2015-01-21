@@ -60,18 +60,18 @@ class Dispatcher {
 	static $data = array();
 
 	/****
-		Parse out the request URI into a base array. Ex: Given the following URI:
+	  Parse out the request URI into a base array. Ex: Given the following URI:
 
-		http://localhost/chrisrichron/api_v3/this/is;param1=val1;param2=val2/a/test;options=opt1,opt2,opt3?q=and+a+query+string+too&x=23
+	  http://localhost/chrisrichron/api_v3/this/is;param1=val1;param2=val2/a/test;options=opt1,opt2,opt3?q=and+a+query+string+too&x=23
 
-		The resulting array is as follows: 
-		Array
-		(
-		    [0] => this
-		    [1] => is;param1=val1;param2=val2
-		    [2] => a
-		    [3] => test;options=opt1,opt2,opt3
-		)
+	  The resulting array is as follows: 
+	  Array
+	  (
+	    [0] => this
+	    [1] => is;param1=val1;param2=val2
+	    [2] => a
+	    [3] => test;options=opt1,opt2,opt3
+	  )
 	**/
 	static function parseRequest($request) {
 		//echo preg_quote(URI_BASE, '/');
@@ -84,21 +84,21 @@ class Dispatcher {
 
 		//if (DEBUG_MODE) echo '<pre>'.print_r($params,true).'</pre>'; // dunp $params for inspection
 		return $params;
-	}
+	} // parseRequest
 
 	/****
-		Take a delimited string and parse into components
-		We assume the first parameter in the path is a resource
-		identifier (collection name or item id) per the API spec.
-		The rest of the path should be parameters
+	  Take a delimited string and parse into components
+	  We assume the first parameter in the path is a resource
+	  identifier (collection name or item id) per the API spec.
+	  The rest of the path should be parameters
 
-		ex: users;limit=20;fields=firstname,lastname,email
-		results in the following array: 
-		array {
-			'model' => 'users',
-			'limit' => 20,
-			'fields' => array { 'firstname', 'lastname', 'email' }
-		}
+	  ex: users;limit=20;fields=firstname,lastname,email
+	  results in the following array: 
+	  array {
+		'model' => 'users',
+		'limit' => 20,
+		'fields' => array { 'firstname', 'lastname', 'email' }
+	  }
 	 **/
 	static function parsePath($path) {
 		$result = array();
@@ -122,7 +122,6 @@ class Dispatcher {
 
 	 **/
 	static function parseRequestParams($request_uri) {
-		//if (DEBUG_MODE) global $output;
 
 		$requestParams = Dispatcher::parseRequest($request_uri);
 		if (DEBUG_MODE) Message::addDebugMessage('request_params', $requestParams);
@@ -160,7 +159,6 @@ class Dispatcher {
 		return $parsedRequestParams;
 	} // parseResquestParams
 
-
 	/****
 	  Routes and processes request
 	  This new version of route is more atomic. Its job is to parse the request, instantiate
@@ -171,11 +169,18 @@ class Dispatcher {
 	  appropriate related models based on the request parameters. 
 	 **/
 	static function route(&$db, $request_uri, $options = null) {
-		//if (DEBUG_MODE) global $output;
 
 		$parsedRequestParams = Dispatcher::parseRequestParams($request_uri);
 		if (DEBUG_MODE) Message::addDebugMessage('parsedRequestParams', $parsedRequestParams);
 
+		// non-destructively retrieve the first key from the request params array
+		$modelName = array_shift(array_keys($parsedRequestParams));
+
+		// instantiate the root model and pass the request parameters into it
+		$model = new $modelName($db);
+
+		Message::addDebugMessage($modelName.'_related_models', $model->getRelatedModels());
+		Message::addDebugMessage($modelName.'_related_data', $model->getAll());
 
 
 	} // route

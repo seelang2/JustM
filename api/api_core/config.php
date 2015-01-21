@@ -20,4 +20,3 @@ define('DB_PASSWORD', 'password');
 $useJsonEnvelope = empty($_GET['envelope']) || $_GET['envelope'] == 'false' ? false : true;
 if (DEBUG_MODE) $useJsonEnvelope = true;
 
-

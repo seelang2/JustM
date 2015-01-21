@@ -22,6 +22,8 @@ define('URI_BASE', DS.'timeslips'.DS.'dev'.DS.'api'.DS);
 define('API_CORE_PATH', API_CORE_LOCATION.DS.API_CORE_DIR.DS);
 // name and location of directory where models are located with trailing slash
 define('API_MODEL_PATH', API_CORE_PATH.'models'.DS);
+// model cache file location
+define('CACHE_DIR',API_CORE_PATH.'tmp'.DS.'cache');
 
 // load API core
 require(API_CORE_PATH.'core.php');

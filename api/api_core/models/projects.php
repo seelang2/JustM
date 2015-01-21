@@ -1,13 +1,18 @@
 <?php
-/*****
-   projects.php
- **/
+/*********
+ * projects.php - Model file
+ * @author: Chris Langtiw
+ *
+ * @description: 
+ * 
+ ****/
+
 
 class Projects extends Model {
 
 	public $tableName = 'projects';
 
-    $has = array(
+    protected $has = array(
         'timeslips' => array( 					// Alias to use for this table (use model name if no alias)
             'model'     => 'Timeslips', 		// Name of the model (or model on other side of link table)
             'fk'        => 'id', 				// Foreign key field name for local model
