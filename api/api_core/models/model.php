@@ -15,44 +15,43 @@
 class Model {
 
     protected $parentModel = NULL;
+    protected $subModel = NULL;
     protected $fieldList = array();
     protected $primaryKey = NULL;
     protected $db = NULL;
     protected $relatedModels = array(); // maintain list of attached models to avoid loops
 
-    /****
-      The following properties are used by the models that inherit from Model
-     **/
-    
     public $tableName = NULL;                       // table name in db
+    protected $requestParams = array();				// Request parameter array for this model
 
     // define relationships using arrays
-    protected $has = array();                       // one to one or one to many - FK is in other table
-    protected $belongsTo = array();                 // many to one - FK is in this table
-    protected $hasAndBelongsToMany = array();       // many to many - uses a link table
+    protected $relationships = array();				// holds array of table relationships
 
     /****
         The relationships get defined using the following structure:
 
-        $relation = array(
-            'alias' => array(                       // Alias to use for this table (use model name if no alias)
-                'model'     => 'modelClass',        // Name of the model (or model on other side of link table)
-                'fk'        => 'foreignKeyField',   // Foreign key field name for local model
-                'remoteFK'  => 'remoteForeignKey'   // The foerign key field name for the other model
-                'linkTable' => 'linkTableName'      // Name of link table to use
-            )
-        );
+	    protected $relationships = array(
+	    	'relation' => array(						// 'has', 'belongsTo', 'HABTM'
+		        'alias' => array(                       // Alias to use for this table (use model name if no alias)
+		            'model'     => 'modelClass',        // Name of the model (or model on other side of link table)
+		            'fk'        => 'foreignKeyField',   // Foreign key field name for local model
+		            'remoteFK'  => 'remoteForeignKey'   // The foerign key field name for the other model
+		            'linkTable' => 'linkTableName'      // Name of link table to use
+		        )
+	        )
+	    );
+
      **/
 
     /****
       a reference to the database connection object is passed to the constructor and stored locally
-      as dependency injection
+      as dependency injection, as are the request parameters.
 
-      This needs to be revised to take the parsed request parameters and only instantiate the models
-      required by the request. Additionally, it should set the ID and options on the models for the 
-      ensuing query operation. These options can be changed or overridden by method calls.
+      Takes the parsed request parameters and instantiates the models required by the request. 
+      Request parameters are stored in each model in the chain. These options can be changed or 
+      overridden by method calls.
      **/
-    function __construct(&$db, &$parentModel = NULL) {
+    function __construct(&$db, $requestParams, &$parentModel = NULL) {
         $this->parentModel = $parentModel;
         $this->db = $db;
 
@@ -68,6 +67,21 @@ class Model {
             }
         }
         
+        // attach request parameters to model
+        //$thisModelParams = array_shift($requestParams);
+        //$this->requestParams = $thisModelParams[array_shift(array_keys($thisModelParams))];
+        $this->requestParams = array_shift($requestParams);
+
+        // if there's more in the requestParams array, instantiate the next model and attach
+        if (!empty($requestParams)) {
+        	$subModelName = array_shift(array_keys($requestParams));
+        	$this->subModel = new $subModelName($db, $requestParams, $this);
+        }
+
+
+        return;
+        /////////////////////// NOT USED BELOW THIS LINE /// 
+
         // get root model
         $rootModel = $this->getRootModel();
         $thisModel = get_class($this);
@@ -137,11 +151,36 @@ class Model {
 
     } // __construct
 
+    /****
+      Test method.
+     **/
     public function test($params = NULL) {
-        echo '<p>Successfull model test.</p>';
-        echo '<pre>'.print_r($params,true).'</pre>';
-
+    	return array((int)microtime(true), 'Test Method called on model '.get_class($this).'.');
     } // test
+
+    /****
+      Returns the request parameters array for this model (if any)
+     **/
+    public function getRequestParams() {
+    	return $this->requestParams;
+    } // getRequestParams
+
+    /****
+      Returns the request parameters array for the entire chain
+     **/
+    public function getRequestParamsChain() {
+    	$requestParams = array();
+
+    	$rootModel = $this->getRootModel();
+    	$requestParams[get_class($rootModel)] = $rootModel->requestParams;
+    	
+    	while ($rootModel->subModel != NULL) {
+    		$rootModel = $rootModel->subModel;
+    		$requestParams[get_class($rootModel)] = $rootModel->requestParams;
+    	}
+
+    	return $requestParams;
+    } // getRequestParams
 
     /****
       Finds the root of a chain of connected models
@@ -358,53 +397,9 @@ class Model {
     /****
       -
      **/
-    public function query($params = NULL) {
-
-    } // query
-
-    /****
-      -
-     **/
-    public function save($params = NULL) {
-
-    } // save
-
-    /****
-      -
-     **/
     public function count($params = NULL) {
 
     } // count
-
-
-} // class Model
-
-
-
-// the original model base class
-class Model_old {
-	public $parentCollection = null;
-	public $subCollection = null;
-	public $tableName = null;
-	protected $primaryKey = 'id';
-	protected $fields = array();
-	protected $relationships = array();
-	public $id = null;
-
-	function __construct(&$parentCol = null) {
-		if (!empty($parentCol)) {
-			$this->parentCollection = $parentCol;
-			$parentCol->setSubCollection($this);
-		}
-	}
-
-	function setID($id = null) {
-		$this->id = $id;
-	}
-
-	function setSubCollection(&$subCol) {
-		$this->subCollection = $subCol;
-	}
 
 	/***
 	   The idea behind building the queries is to recurse through the model chain, constructing
@@ -456,12 +451,94 @@ class Model_old {
 			); 
 		}
 
-		if ($this->parentCollection != null) {
-			return $this->parentCollection->queryTest($queryArray);
+		if ($this->subCollection != null) {
+			return $this->subCollection->queryTest($queryArray);
 		} else {
 			$queryArray['from'] = $this->tableName;
 			return $queryArray;
 		}
 	} // queryTest
-}
+
+   /****
+     REST API methods
+     ----------------
+     The following methods correspond to the HTTP methods supported by the API.
+     Each of these methods should set a proper HTTP 1.1 status code as part of the response.
+     See http://tools.ietf.org/html/rfc7231
+    **/
+
+    /****
+      GET - Retrieve either a resource collection or an individual resource if a key is given
+
+      Status Codes 		Condition
+      200 OK 			Successful request
+      404 Not Found 	When query returns an empty set
+      400 Bad Request 	Improper parameters sent or query error
+
+     **/
+    public function get($params = array()) {
+    	// override request params with passed params (if any)
+    	$requestParams = array_merge($this->requestParams, $params);
+
+    	return array((int)microtime(true), 'GET Method called.');
+    } // get
+
+    /****
+      HEAD - Retrieve either a resource collection or an individual resource if a key is given
+      without the representation data (schema and headers/links only)
+
+      Status Codes 		Condition
+      200 OK 			Successful request
+
+     **/
+    public function head($params = array()) {
+    	// override request params with passed params (if any)
+    	$requestParams = array_merge($this->requestParams, $params);
+
+    	return array((int)microtime(true), 'HEAD Method called.');
+    } // head
+
+    /****
+      POST - Create a new resource in a given collection with complete data
+     **/
+    public function post($params = array()) {
+    	// override request params with passed params (if any)
+    	$requestParams = array_merge($this->requestParams, $params);
+
+    	return array((int)microtime(true), 'POST Method called.');
+    } // post
+
+    /****
+      PUT - Update a resource in a collection with a given id with complete data
+     **/
+    public function put($params = array()) {
+    	// override request params with passed params (if any)
+    	$requestParams = array_merge($this->requestParams, $params);
+
+    	return array((int)microtime(true), 'PUT Method called.');
+    } // put
+
+    /****
+      PATCH - Update a resource in a collection with a given id with partial data
+     **/
+    public function patch($params = array()) {
+    	// override request params with passed params (if any)
+    	$requestParams = array_merge($this->requestParams, $params);
+
+    	return array((int)microtime(true), 'PATCH Method called.');
+    } // patch
+
+    /****
+      DELETE - Delete a resource in a collection with a given id
+     **/
+    public function delete($params = array()) {
+    	// override request params with passed params (if any)
+    	$requestParams = array_merge($this->requestParams, $params);
+
+    	return array((int)microtime(true), 'DELETE Method called.');
+    } // delete
+
+   
+
+} // class Model
 

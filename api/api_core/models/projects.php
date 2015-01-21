@@ -12,13 +12,15 @@ class Projects extends Model {
 
 	public $tableName = 'projects';
 
-    protected $has = array(
-        'timeslips' => array( 					// Alias to use for this table (use model name if no alias)
-            'model'     => 'Timeslips', 		// Name of the model (or model on other side of link table)
-            'fk'        => 'id', 				// Foreign key field name for local model
-            'remoteFK'  => 'project_id' 		// The foreign key field name for the other model
-            //'linkTable' => 'linkTableName' 	// Name of link table to use
-        )
+    protected $relationships = array( 
+	    'has' => array(
+	        'timeslips' => array( 					// Alias to use for this table (use model name if no alias)
+	            'model'     => 'Timeslips', 		// Name of the model (or model on other side of link table)
+	            'fk'        => 'id', 				// Foreign key field name for local model
+	            'remoteFK'  => 'project_id' 		// The foreign key field name for the other model
+	            //'linkTable' => 'linkTableName' 	// Name of link table to use
+	        )
+	    )
     );
 
 

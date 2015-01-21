@@ -15,8 +15,3 @@ define('DB_NAME', 'timeslips');
 define('DB_USER', 'dbuser');
 define('DB_PASSWORD', 'password');
 
-// flag whether an envelope should be used for the JSON output
-// setting DEBUG_MODE to true overrides this to true
-$useJsonEnvelope = empty($_GET['envelope']) || $_GET['envelope'] == 'false' ? false : true;
-if (DEBUG_MODE) $useJsonEnvelope = true;
-

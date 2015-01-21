@@ -123,10 +123,7 @@ class Dispatcher {
 	static function parseRequestParams($request_uri) {
 
 		$requestParams = Dispatcher::parseRequest($request_uri);
-		if (DEBUG_MODE) Message::addDebugMessage('request_params', $requestParams);
-
 		$lastModel = null;
-
 		$parsedRequestParams = array(); // save a copy of the fully parsed request parameters
 
 		while ($path = array_shift($requestParams)) {
@@ -176,11 +173,25 @@ class Dispatcher {
 		$modelName = array_shift(array_keys($parsedRequestParams));
 
 		// instantiate the root model and pass the request parameters into it
-		$model = new $modelName($db);
+		$model = new $modelName($db, $parsedRequestParams);
 
-		Message::addDebugMessage($modelName.'_related_models', $model->getRelatedModels());
-		Message::addDebugMessage($modelName.'_related_data', $model->getAll());
+		//Message::addDebugMessage($modelName.'_related_models', $model->getRelatedModels());
+		//Message::addDebugMessage($modelName.'_related_data', $model->getAll());
 
+		if (DEBUG_MODE) Message::addDebugMessage('modelRequestParams', $model->getRequestParams());
+		if (DEBUG_MODE) Message::addDebugMessage('requestParamsChain', $model->getRequestParamsChain());
+
+		// Route the processing to the appropriate Model method
+		// the simplest approach would be to name methods on the model after the request
+		// methods - get, post, put, patch, and delete. 
+
+		// first test if the method is allowed
+		
+		$method = strtolower($_SERVER['REQUEST_METHOD']);
+		$requestData = $model->{$method}();
+
+		Message::setResponse($requestData); // sets response body data
+		Message::render(); // render output to user agent
 
 	} // route
 
@@ -195,10 +206,11 @@ class Dispatcher {
  **/
 class Message {
 
-	static protected $message = array();
+	static protected $response = array();
 	static protected $headers = array();
 	static protected $debugMessages = array();
 	static protected $data = null;
+	static public $useEnvelope;
 
 	/****
 	  Sets HTTP headers to be sent to the user agent. The keys in $headers will be 
@@ -213,8 +225,17 @@ class Message {
 	  Adds a key to the response body. If an envelope is used the data is placed 
 	  inside a 'response' property of the envelope.
 	 **/
-	static public function addMessage($key, $data) {
-		Message::$message[$key] = $data;
+	static public function addResponseKey($key, $data) {
+		Message::$response[$key] = $data;
+	}
+
+	/****
+	  Set the entire response body array by replacing it with array $data. If an 
+	  envelope is used the data is placed inside a 'response' property of the 
+	  envelope.
+	 **/
+	static public function setResponse($data) {
+		Message::$response = $data;
 	}
 
 	/****
@@ -231,14 +252,16 @@ class Message {
 	  NOTE: Adding debug messages will always cause an envelope to be used 
 	  regardless of the DEBUG_MODE or $useEnvelope settings.
 	 **/
-	static public function render($useEnvelope) {
+	static public function render($useEnvelope = null) {
+		if (empty($useEnvelope)) $useEnvelope = Message::$useEnvelope;
+
 		header('Content-Type: application/json');
 		
 		if ($useEnvelope || !empty(Messages::$debugMessages)) {
 			// if an envelope is used the header values will be placed in a wrapper
 			// and the data will be placed in a 'Response' property
 			Message::$data = array(
-				'Response' => Message::$message
+				'response' => Message::$response
 			);
 	
 			foreach (Message::$headers as $header => $headerValue) {
