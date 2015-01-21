@@ -372,6 +372,10 @@ class Model {
     /****
       a reference to the database connection object is passed to the constructor and stored locally
       as dependency injection
+
+      This needs to be revised to take the parsed request parameters and only instantiate the models
+      required by the request. Additionally, it should set the ID and options on the models for the 
+      ensuing query operation. These options can be changed or overridden by method calls.
      **/
     function __construct(&$db, &$parentModel = NULL) {
         $this->parentModel = $parentModel;
