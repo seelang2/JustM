@@ -186,7 +186,7 @@ class Dispatcher {
 		// methods - get, post, put, patch, and delete. 
 
 		// first test if the method is allowed
-		
+
 		$method = strtolower($_SERVER['REQUEST_METHOD']);
 		$requestData = $model->{$method}();
 

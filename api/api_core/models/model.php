@@ -14,17 +14,15 @@
  **/
 class Model {
 
+	protected $modelName = NULL;
     protected $parentModel = NULL;
     protected $subModel = NULL;
     protected $fieldList = array();
     protected $primaryKey = NULL;
     protected $db = NULL;
-    protected $relatedModels = array(); // maintain list of attached models to avoid loops
 
     public $tableName = NULL;                       // table name in db
     protected $requestParams = array();				// Request parameter array for this model
-
-    // define relationships using arrays
     protected $relationships = array();				// holds array of table relationships
 
     /****
@@ -54,6 +52,7 @@ class Model {
     function __construct(&$db, $requestParams, &$parentModel = NULL) {
         $this->parentModel = $parentModel;
         $this->db = $db;
+        $this->modelName = get_class($this);
 
         if (empty($this->fieldList)) {
             $this->loadFieldList();
@@ -68,8 +67,6 @@ class Model {
         }
         
         // attach request parameters to model
-        //$thisModelParams = array_shift($requestParams);
-        //$this->requestParams = $thisModelParams[array_shift(array_keys($thisModelParams))];
         $this->requestParams = array_shift($requestParams);
 
         // if there's more in the requestParams array, instantiate the next model and attach
@@ -79,82 +76,16 @@ class Model {
         }
 
 
-        return;
-        /////////////////////// NOT USED BELOW THIS LINE /// 
-
-        // get root model
-        $rootModel = $this->getRootModel();
-        $thisModel = get_class($this);
-
-        // the root instance has to add itself to the list of related models as well
-        if (empty($rootModel->relatedModels)) $rootModel->relatedModels[$thisModel] = &$this;
-
-        // connect all related models to this one
-        // attach the related model using its alias
-        if (!empty($this->has)) {
-            foreach ($this->has as $alias => $relModel) {
-                $model = $relModel['model'];
-
-                // check if this model is already in the chain
-                if (!array_key_exists($model, $rootModel->relatedModels)) {
-                    // model is not in chain, create new instance
-//                    echo "<p>Attaching $model to ".get_class($this)." as $alias (root is ".get_class($rootModel).")</p>";
-                    $rootModel->relatedModels[$model] = new $model($this->db, $this);
-                    // then add to chain as reference to alias
-                    $this->{$alias} = &$rootModel->relatedModels[$model];
-                } else {
-                    // model is already attached, so just create alias link
-                    //$this->{$alias} = &$rootModel->relatedModels[$model];
-                }
-
-            } // foreach
-        } // if has
-
-        if (!empty($this->belongsTo)) {
-            foreach ($this->belongsTo as $alias => $relModel) {
-                $model = $relModel['model'];
-
-                // check if this model is already in the chain
-                if (!array_key_exists($model, $rootModel->relatedModels)) {
-                    // model is not in chain, create new instance
-//                    echo "<p>Attaching $model to ".get_class($this)." as $alias</p>";
-                    $rootModel->relatedModels[$model] = new $model($this->db, $this);
-                    // then add to chain as reference to alias
-                    $this->{$alias} = &$rootModel->relatedModels[$model];
-                } else {
-                    // model is already attached, so just create alias link
-                    //$this->{$alias} = &$rootModel->relatedModels[$model];
-                }
-
-            } // foreach
-        } // if belongsTo
-
-        if (!empty($this->hasAndBelongsToMany)) {
-            foreach ($this->hasAndBelongsToMany as $alias => $relModel) {
-                $model = $relModel['model'];
-
-                // check if this model is already in the chain
-                if (!array_key_exists($model, $rootModel->relatedModels)) {
-                    // model is not in chain, create new instance
-//                    echo "<p>Attaching $model to ".get_class($this)." as $alias</p>";
-                    $rootModel->relatedModels[$model] = new $model($this->db, $this);
-                    // then add to chain as reference to alias
-                    $this->{$alias} = &$rootModel->relatedModels[$model];
-                } else {
-                    // model is already attached, so just create alias link
-                    //$this->{$alias} = &$rootModel->relatedModels[$model];
-                }
-
-            } // foreach 
-        } // if HABTM
-
 
     } // __construct
 
     /****
       Test method.
      **/
-    public function test($params = NULL) {
+    public function test($params = array()) {
+    	// override request params with passed params (if any)
+    	$requestParams = array_merge($this->requestParams, $params);
+
     	return array((int)microtime(true), 'Test Method called on model '.get_class($this).'.');
     } // test
 
@@ -282,22 +213,16 @@ class Model {
     protected function getRelatedData($parentModel, $id = NULL, $key = 'id', $parentAlias = NULL, $linkTable = NULL, $remoteFK = NULL) {
         if (empty($parentAlias)) $parentAlias = get_class($parentModel);
 
-//echo "<p>Running getRelatedData on ".get_class($parentModel)." as $parentAlias through $linkTable with key $key = $id and RFK $remoteFK</p>";
-
         // first, get the record specified by $key = $id
         $query = "SELECT * FROM ". $parentModel->tableName ." AS ". $parentAlias;
         if (!empty($linkTable)) $query .= ", $linkTable";
         if (!empty($id)) $query .= " WHERE ".$key." = '". $id ."' ";
         if (!empty($linkTable)) $query .= " AND {$parentModel->primaryKey} = $remoteFK";
 
-//echo "<p>$query</p>";
-
         $result = $parentModel->db->query($query);
         if (!$result) throw new Exception("SQL query error. Query: $query");
 
         $tmp = $result->fetchAll(PDO::FETCH_ASSOC);
-
-//echo pr($tmp);
 
         // for each result row:
             // if there are any connected models, for each model:
@@ -306,8 +231,8 @@ class Model {
             // get the $row's id
             $rowID = $row[$parentModel->primaryKey];
 
-            if (!empty($parentModel->has)) {
-                foreach ($parentModel->has as $alias => $relModel) {
+            if (!empty($parentModel->relationships['has'])) {
+                foreach ($parentModel->relationships['has'] as $alias => $relModel) {
                     $modelName = $relModel['model'];
                     $model = $parentModel->getModel($modelName);
 
@@ -323,8 +248,8 @@ class Model {
                }
             } // if has
 
-            if (!empty($parentModel->belongsTo)) {
-                foreach ($parentModel->belongsTo as $alias => $relModel) {
+            if (!empty($parentModel->relationships['belongsTo'])) {
+                foreach ($parentModel->relationships['belongsTo'] as $alias => $relModel) {
                     $modelName = $relModel['model'];
                     $model = $parentModel->getModel($modelName);
 
@@ -342,8 +267,8 @@ class Model {
                }
             } // if belongsTo
 
-            if (!empty($parentModel->hasAndBelongsToMany)) {
-                foreach ($parentModel->hasAndBelongsToMany as $alias => $relModel) {
+            if (!empty($parentModel->relationships['hasAndBelongsToMany'])) {
+                foreach ($parentModel->relationships['hasAndBelongsToMany'] as $alias => $relModel) {
                     $modelName = $relModel['model'];
                     $model = $parentModel->getModel($modelName);
 
