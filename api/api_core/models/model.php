@@ -358,6 +358,10 @@ class Model {
 		if (!isset($queryArray['order'])) $queryArray['order'] = array();
 		if (!isset($queryArray['limit'])) $queryArray['limit'] = array();
 
+		if ($this->parentModel == null) {
+			$queryArray['from'] = $this->tableName;
+		}
+
 		if (empty($this->requestParams['fields'])) {
 			// if fields haven't been specified add all fields
 			// only do this for the submodel or single models; parentmodel only gets listed explicity
@@ -397,10 +401,9 @@ class Model {
 
 		if ($this->subModel != null) {
 			return $this->subModel->getQueryComponents($queryArray);
-		} else {
-			$queryArray['from'] = $this->tableName;
-			return $queryArray;
-		}
+		} 
+
+		return $queryArray;
 	} // getQueryComponents
 
 	public function queryTest() {
@@ -424,7 +427,9 @@ class Model {
 		// add JOIN clause
 		if (!empty($queryData['joins'])) {
 			$query .= ' INNER JOIN ';
-
+			foreach ($queryData['joins'][0] as $table => $relationship) {
+				$query .= $table . ' ON ' . $relationship;
+			}
 		}
 
 		// add WHERE clause
