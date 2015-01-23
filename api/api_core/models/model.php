@@ -32,8 +32,8 @@ class Model {
 	    	'relation' => array(						// 'has', 'belongsTo', 'HABTM'
 		        'alias' => array(                       // Alias to use for this table (use model name if no alias)
 		            'model'     => 'modelClass',        // Name of the model (or model on other side of link table)
-		            'fk'        => 'foreignKeyField',   // Foreign key field name for local model
-		            'remoteFK'  => 'remoteForeignKey'   // The foerign key field name for the other model
+		            'localKey'  => 'foreignKeyField',   // Foreign key field name for local model
+		            'remoteFK'  => 'remoteForeignKey'   // The foreign key field name for the related model
 		            'linkTable' => 'linkTableName'      // Name of link table to use
 		        )
 	        )
@@ -348,7 +348,7 @@ class Model {
 	   Using this structure, the components of the query can be added in any order, and later
 	   parsed into a proper query string
 	 */
-	function queryTest($queryArray = array()) {
+	public function getQueryComponents($queryArray = array()) {
 
 		if (empty($queryArray)) $queryArray = array();
 
@@ -358,31 +358,40 @@ class Model {
 		if (!isset($queryArray['order'])) $queryArray['order'] = array();
 		if (!isset($queryArray['limit'])) $queryArray['limit'] = array();
 
-		foreach ($this->fields as $field) {
-			array_push($queryArray['fields'], $this->tableName.'.'.$field.' AS '.$this->tableName.'_'.$field);
+		foreach ($this->getFieldList() as $field) {
+			array_push($queryArray['fields'], $this->tableName.'.'.$field['Field'].' AS '."'".$this->tableName.'.'.$field['Field']."'");
 		}
 
-		if ($this->id != null) {
+		if ($this->requestParams['id'] != null) {
 			array_push(
 				$queryArray['where'], 
-				$this->tableName.'.'.$this->primaryKey.' = '.$this->id
+				$this->tableName.'.'.$this->primaryKey.' = '.$this->requestParams['id']
 			);
 		}
 		
-		if ($this->subCollection != null) {
+		if ($this->subModel != null) {
+			/*
 			array_push(
 				$queryArray['joins'], 
-			    array($this->subCollection->tableName => $this->relationships[$this->subCollection->tableName])
-			); 
+			    array($this->subModel->tableName => $this->relationships[$this->subModel->tableName])
+			);
+			*/ 
 		}
 
-		if ($this->subCollection != null) {
-			return $this->subCollection->queryTest($queryArray);
+		if ($this->subModel != null) {
+			return $this->subModel->getQueryComponents($queryArray);
 		} else {
 			$queryArray['from'] = $this->tableName;
 			return $queryArray;
 		}
+	} // getQueryComponents
+
+	public function queryTest() {
+
+		return $this->getQueryComponents();
+
 	} // queryTest
+
 
    /****
      REST API methods
