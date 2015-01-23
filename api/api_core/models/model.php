@@ -469,7 +469,65 @@ class Model {
     	// override request params with passed params (if any)
     	$requestParams = array_merge($this->requestParams, $params);
 
-    	return array((int)microtime(true), 'GET Method called.');
+    	//return array((int)microtime(true), 'GET Method called.');
+
+		// get query components array
+		$queryData = $this->getQueryComponents();
+
+		$query = 'SELECT ';
+		
+		// add fields
+		$c = 0;
+		foreach ($queryData['fields'] as $field) {
+			if ($c++ > 0) $query .= ', ';
+			$query .= $field;
+		}
+
+		// add FROM clause
+		$query .= ' FROM ' . $queryData['from'];
+
+		// add JOIN clause
+		if (!empty($queryData['joins'])) {
+			$query .= ' INNER JOIN ';
+			foreach ($queryData['joins'][0] as $table => $relationship) {
+				$query .= $table . ' ON ' . $relationship;
+			}
+		}
+
+		// add WHERE clause
+		$c = 0;
+		if (!empty($queryData['where'])) {
+			$query .= ' WHERE ';
+			foreach ($queryData['where'] as $field) {
+				if ($c++ > 0) $query .= ' AND ';
+				$query .= $field;
+			}
+
+		}
+
+		// query built, now send to server
+		$results = $this->db->query($query);
+
+		if ($results == false) {
+			// set HTTP response code
+			header("HTTP/1.1 400 Bad Request");
+			// set error message
+			Message::addResponseKey('error_message','Query error. Please check request parameters.');
+			Message::render();
+			exit;
+		}
+
+		if ($this->db->query("SELECT FOUND_ROWS()")->fetchColumn() == 0) {
+			// set HTTP response code
+			header("HTTP/1.1 404 Not Found");
+			// set error message
+			Message::addResponseKey('error_message','No results matching your request were found.');
+			Message::render();
+			exit;
+		}
+
+		return $results->fetchAll(PDO::FETCH_ASSOC);
+
     } // get
 
     /****

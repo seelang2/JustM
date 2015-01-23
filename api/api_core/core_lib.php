@@ -10,14 +10,14 @@
 
 // register class autoloader
 spl_autoload_register(function ($class) {
-//    if (file_exists(API_CORE_PATH.DS.'models'.DS.$class.'.php')) {
+    if (file_exists(API_CORE_PATH.DS.'models'.DS.$class.'.php')) {
 	    include (API_MODEL_PATH.$class.'.php');
-//	} else {
-//		header("HTTP/1.1 400 Bad Request");
-//		Message::addMessage('error_message','Requested resource model does not exist: '.API_CORE_PATH.DS.'models'.DS.$class.'.php');
-//		Message::render($useJsonEnvelope);
-//		exit();
-//	}
+	} else {
+		header("HTTP/1.1 400 Bad Request");
+		Message::addResponseKey('error_message','Requested resource model does not exist: '.API_CORE_PATH.DS.'models'.DS.$class.'.php');
+		Message::render($useJsonEnvelope);
+		exit();
+	}
 });
 
 
@@ -133,6 +133,7 @@ class Dispatcher {
 			// this is a bit of a cheap shot. There should be a cleaner solution than
 			// testing for file existence. Between this and the class autoloader there
 			// must be a better solution.
+			// I use file_exists here because class_exists() invokes the autoloader.
 			if (file_exists(API_MODEL_PATH.$params['model'].'.php')) {
 				// if this is a valid class, we set the model name
 				$model = $params['model'];
@@ -175,14 +176,11 @@ class Dispatcher {
 		// instantiate the root model and pass the request parameters into it
 		$model = new $modelName($db, $parsedRequestParams);
 
-		//Message::addDebugMessage($modelName.'_related_models', $model->getRelatedModels());
-		//Message::addDebugMessage($modelName.'_related_data', $model->getAll());
-
-		if (DEBUG_MODE) Message::addDebugMessage('parentModel', $model->parentModel->tableName);
-		if (DEBUG_MODE) Message::addDebugMessage('subModel', $model->subModel->tableName);
-		if (DEBUG_MODE) Message::addDebugMessage('modelRequestParams', $model->getRequestParams());
+		//if (DEBUG_MODE) Message::addDebugMessage('parentModel', $model->parentModel->tableName);
+		//if (DEBUG_MODE) Message::addDebugMessage('subModel', $model->subModel->tableName);
+		//if (DEBUG_MODE) Message::addDebugMessage('modelRequestParams', $model->getRequestParams());
 		if (DEBUG_MODE) Message::addDebugMessage('requestParamsChain', $model->getRequestParamsChain());
-		if (DEBUG_MODE) Message::addDebugMessage('modelFieldList', $model->getFieldList());
+		//if (DEBUG_MODE) Message::addDebugMessage('modelFieldList', $model->getFieldList());
 		if (DEBUG_MODE) Message::addDebugMessage('queryTest', $model->queryTest());
 
 		// Route the processing to the appropriate Model method
