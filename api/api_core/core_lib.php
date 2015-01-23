@@ -178,6 +178,8 @@ class Dispatcher {
 		//Message::addDebugMessage($modelName.'_related_models', $model->getRelatedModels());
 		//Message::addDebugMessage($modelName.'_related_data', $model->getAll());
 
+		if (DEBUG_MODE) Message::addDebugMessage('parentModel', $model->parentModel->tableName);
+		if (DEBUG_MODE) Message::addDebugMessage('subModel', $model->subModel->tableName);
 		if (DEBUG_MODE) Message::addDebugMessage('modelRequestParams', $model->getRequestParams());
 		if (DEBUG_MODE) Message::addDebugMessage('requestParamsChain', $model->getRequestParamsChain());
 		if (DEBUG_MODE) Message::addDebugMessage('modelFieldList', $model->getFieldList());

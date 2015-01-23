@@ -13,14 +13,14 @@ class Users extends Model {
 	public $tableName = 'users';
 
     protected $relationships = array(
-    	'relation' => array(
+    	//'relation' => array(
 	        'alias' => array(                       // Alias to use for this table (use model name if no alias)
 	            'model'     => 'modelClass',        // Name of the model (or model on other side of link table)
 	            'localKey'  => 'foreignKeyField',   // Foreign key field name for local model
-	            'remoteFK'  => 'remoteForeignKey'   // The foerign key field name for the other model
+	            'remoteKey' => 'remoteForeignKey'   // The foerign key field name for the other model
 	            'linkTable' => 'linkTableName'      // Name of link table to use
 	        )
-        )
+        //)
     );
 
 /*

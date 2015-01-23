@@ -15,8 +15,8 @@
 class Model {
 
 	protected $modelName = NULL;
-    protected $parentModel = NULL;
-    protected $subModel = NULL;
+    public $parentModel = NULL;
+    public $subModel = NULL;
     protected $fieldList = array();
     protected $primaryKey = NULL;
     protected $db = NULL;
@@ -29,14 +29,14 @@ class Model {
         The relationships get defined using the following structure:
 
 	    protected $relationships = array(
-	    	'relation' => array(						// 'has', 'belongsTo', 'HABTM'
+	    	//'relation' => array(						// 'has', 'belongsTo', 'HABTM'
 		        'alias' => array(                       // Alias to use for this table (use model name if no alias)
 		            'model'     => 'modelClass',        // Name of the model (or model on other side of link table)
 		            'localKey'  => 'foreignKeyField',   // Foreign key field name for local model
-		            'remoteFK'  => 'remoteForeignKey'   // The foreign key field name for the related model
+		            'remoteKey' => 'remoteForeignKey'   // The foreign key field name for the related model
 		            'linkTable' => 'linkTableName'      // Name of link table to use
 		        )
-	        )
+	        //)
 	    );
 
      **/
@@ -358,8 +358,22 @@ class Model {
 		if (!isset($queryArray['order'])) $queryArray['order'] = array();
 		if (!isset($queryArray['limit'])) $queryArray['limit'] = array();
 
-		foreach ($this->getFieldList() as $field) {
-			array_push($queryArray['fields'], $this->tableName.'.'.$field['Field'].' AS '."'".$this->tableName.'.'.$field['Field']."'");
+		if (empty($this->requestParams['fields'])) {
+			// if fields haven't been specified add all fields
+			// only do this for the submodel or single models; parentmodel only gets listed explicity
+			if ( ($this->parentModel == null && $this->subModel == null) ||
+				 ($this->parentModel != null && $this->subModel == null)
+				) {
+				foreach ($this->getFieldList() as $field) {
+					array_push($queryArray['fields'], $this->tableName.'.'.$field['Field'].' AS '."'".$this->tableName.'.'.$field['Field']."'");
+				}
+			}
+
+		} else {
+			// only add fields specified in requestParams
+			foreach ($this->requestParams['fields'] as $field) {
+				array_push($queryArray['fields'], $this->tableName.'.'.$field.' AS '."'".$this->tableName.'.'.$field."'");
+			}
 		}
 
 		if ($this->requestParams['id'] != null) {
@@ -370,12 +384,15 @@ class Model {
 		}
 		
 		if ($this->subModel != null) {
-			/*
+			// add table to join. Key is table name; value is relationship as string
+			// 'table' => 'table1.field = table2.field'
+			$localTable = $this->tableName;
+			$remoteTable = $this->subModel->tableName;
 			array_push(
 				$queryArray['joins'], 
-			    array($this->subModel->tableName => $this->relationships[$this->subModel->tableName])
+			    array($remoteTable => $localTable.'.'.$this->relationships[$remoteTable]['localKey'].' = '.$remoteTable.'.'.$this->relationships[$remoteTable]['remoteKey'])
 			);
-			*/ 
+			 
 		}
 
 		if ($this->subModel != null) {
@@ -387,9 +404,42 @@ class Model {
 	} // getQueryComponents
 
 	public function queryTest() {
+		// testing building a SELECT
 
-		return $this->getQueryComponents();
+		// get query components array
+		$queryData = $this->getQueryComponents();
 
+		$query = 'SELECT ';
+		
+		// add fields
+		$c = 0;
+		foreach ($queryData['fields'] as $field) {
+			if ($c++ > 0) $query .= ', ';
+			$query .= $field;
+		}
+
+		// add FROM clause
+		$query .= ' FROM ' . $queryData['from'];
+
+		// add JOIN clause
+		if (!empty($queryData['joins'])) {
+			$query .= ' INNER JOIN ';
+
+		}
+
+		// add WHERE clause
+		$c = 0;
+		if (!empty($queryData['where'])) {
+			$query .= ' WHERE ';
+			foreach ($queryData['where'] as $field) {
+				if ($c++ > 0) $query .= ' AND ';
+				$query .= $field;
+			}
+
+		}
+
+		$queryData['processedQuery'] = $query;
+		return $queryData;
 	} // queryTest
 
 
