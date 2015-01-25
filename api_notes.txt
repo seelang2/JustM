@@ -1,14 +1,176 @@
 TimeSlips API Development Notes
 ===============================
 
-This project started out as a casual Dive project with the purpose of creating an app to be created and put out in the marketplace mainly as a learning experience. To that end, I've kep the original code and some of the iterations intact for study purposes. However, as what happens with Sparks (Girl Genius reference), the desire to keep improving and developing a project set in, and thus the API component of the project has grown into a bit more than the original purpose, and I've taken the opportunity to merge a couple of other api projects into this one.
+Contents
+--------
+1. Overview
+2. API REST Architecture Overview
+	2.1 Hypertext Transfer Protocol (HTTP) and Representational State Transfer (REST)
+	2.2. Resources
+	2.3. Representation Metadata
+	2.5. Request Methods
+	2.6. Request Response
+	2.7. Request Response Codes
+3. Implementation
+	3.1. File organization
+	3.2. Models
+	3.3. Request Routing
+	3.4. Output
+4. Usage
+	4.1. URI Format
+	4.2. URI Parameters
+	4.3. Supported Request Methods
+	4.4. Request Response
+5. References
+
+1. Overview
+-----------
+This project started out as a casual Dive project with the purpose of creating an app to be created and put out in the marketplace mainly as a learning experience. To that end, I've kept the original code and some of the iterations intact for study purposes. 
+
+However, as what happens with Sparks (Girl Genius reference), the desire to keep improving and developing a project set in, and thus the API component of the project has grown into a bit more than the original purpose, and I've taken the opportunity to merge a couple of other api projects into this one.
 
 This version of the API takes the basic concepts discussed in the Dive session, along with concepts discussed from other PHP classes I've taught and adds in a proper dose of RESTful implementation. I've combined it with another project born from those prior classes and MVC framework experience I named JustM, which was a simplified MVC system that focused only on the Model portion for data services. 
 
 This new code I've 'cleverly' dubbed JustM 2.0. The intent is to create a codebase I would consider an actual framework - a 'mostly connected' system that simply requires a little bit of custom wiring to get a working application.
 
-JustM is meant to be the core of a simple Model-based RESTful API. APIs don't require a full-blown Model-View-Controller implementation. The Views are simply data representations, and the Controller code is minimal, especially in a RESTful implementation. The Model code, however, which contains the data access methods as well as the business logic governing the manipulation of the data, is still there. JustM provides the REST connectivity and the data access and representation as JSON (and probably JSONP). All a developer has to do to implement their own data service API is to set a few configuration parameters and create models representing their data.
+JustM is meant to be the core of a simple Model-based RESTful API. APIs don't require a full-blown Model-View-Controller implementation. The Views are simply data representations, and the Controller code is minimal, especially in a RESTful implementation. The Model code, however, which contains the data access methods as well as the business logic governing the manipulation of the data, is still there. 
+
+JustM provides the REST connectivity and the data access and representation as JSON (and probably JSONP). All a developer has to do to implement their own data service API is to set a few configuration parameters and create models representing their data.
 
 I don't have any real grandiose visions about the API project. There are plenty of API tools out there. It's not like I expect JustM to become a thing of any magnitude. I'm building it mainly for my own purposes and what I believe a framework should be. Of course, it'd be pretty cool if other people find the thing useful and use it in their own projects. So I'm releasing it as open source and just putting it out there.
+
+This API will implement an actual basic REST style interface, and also make some changes to the output as well from the original design meeting.
+
+2. API REST Architecture Overview
+---------------------------------
+This section provides a concise overview of RESTful principles and provides background information for Section 3 which details the API's REST implementation.
+
+This section is not meant to provide an in-depth explanation about REST concepts and development. There is plenty of published information on the subject.
+
+2.1. Hypertext Transfer Protocol (HTTP) and Representational State Transfer (REST)
+----------------------------------------------------------------------------------
+Hypertext (and hypermedia) is essentially data that can be accessed nonsequentially. The data is accessed via hyperlink which are commonly formatted as a Uniform Resource Identifier (URI). HTTP is used to govern the process of accessing hypermedia. REST uses HTTP to interact with data representations.
+
+2.2. Resources
+--------------
+In a REST interface, a resource is the information the API delivers. Resources are grouped into collections. Resources may be accessed as a collection or individually.
+
+Resources are accessed via URIs. The URI serves to identify the resource but does not contain information about the manipulation operation. From a naming perspective, the URI is noun-based, identifying the resource, and not verb-based, which would specify the action to perform with a resource. See section 4 for additional information.
+
+The URI generally provides a representation of the resource to manipulate. A representation is simply the format the data is in, such as XML or JSON. Multiple representations may be supported and be specified by the client requesting the resource.
+
+2.3. Representation Metadata
+----------------------------
+A requested resource representation may have metadata associated with it. This metadata is not part of the resource data itself, but information describing the resource, representation, or the request itself. This information is typically conveyed via HTTP headers and/or as part of a response envelope or wrapper.
+
+2.4. Request Methods
+--------------------
+In a RESTful API, requests are HTTP based and therefore are always based on resources are nouns semantically named in plural form. Verbs are not used in the URI; instead, the HTTP request method will determine the action to take typically as follows:
+
+GET 	Retrieve either a resource collection or an individual resource if a key is given
+POST 	Create a new resource in a given collection with complete data
+PUT 	Replace a resource in a collection with a given id with complete data
+PATCH 	Update a specific resource in a collection with partial or complete data
+DELETE 	Delete a specific resource in a collection
+
+Example requests:
+
+Method 	URI Example 			Action
+GET		/users					Retrieve a collection of users
+GET 	/users/42 				Retrieve a single user resource whose key is 42
+POST 	/users 					Create a new user resource 
+PUT 	/users/42 				Update the user resource whose key is 42
+DELETE 	/users/42 				Delete the user resource whose key is 42
+
+2.5. Request Response
+---------------------
+The specific content returned in the server response depends on the request method and hence action performed. Typically either some representation of the resource requested will be delivered to the client, or some sort of feedback message about the operation status. Additional metadata may also be returned as part of the response.
+
+2.6. Request Response Codes
+---------------------------
+The API will return a standard HTTP 1.1 response code on each response describing the status or result of the request. 
+
+3. API Implementation
+---------------------
+
+3.1. File Organization
+----------------------
+
+3.2 Models
+----------
+In this API our resources are represented by models. Models are classes that define the characteristics of the resource as defined in the database - table and field names, relationships to other resources, and so on. Resource models derive from a core Model class that provides the basic functionality and connectivity to access the resource.
+
+3.3. Request Routing
+--------------------
+
+3.4. Output
+-----------
+
+4. Usage
+--------
+
+4.1. Request URI Format
+-----------------------
+After the base url, each path segment in the URI corresponds to a resource identifier (either as a collection or the id of a specific resource). 
+
+
+baseurl/collection/id/subcollection
+
+baseurl
+	collection
+		id | subcollection
+
+At a minimum one collection must be specified. This may then be followed by either a resource id or a subcollection. A subcollection may be followed with a resource id.
+
+Each path segment may be parameterized using semicolons (;) as a delimiter marking the beginning of the parameter block and separating each parameter. Parameter names are separated from their values using equals (=) as a delimiter. In the case where multiple values are allowed, the values are separated using commas (,).
+
+Standard query strings may also be appended to the URI. The query string parameters are typically for global options. Options for each resource may be given in the path segment for that resource.
+
+Example:
+api/users/21;fields=firstname,lastname,email/invoices;status=unpaid;limit=25?envelope=true&callback=runMe
+
+
+4.2. URI Parameters
+-------------------
+The following parameters are available in the API. 
+
+Parameter 	Location 	Description/Usage
+envelope	query		Indicates whether to use an envelope around the response. If a
+						wrapper is used, any metadata normally passed as HTTP headers
+						will be placed in the envelope instead. The request response 
+						data will be placed inside the 'response' property.
+fields		path 		A comma-separated list of the fields to be included in the response.
+attach		query		A comma-separated list of models related to the target collection to be
+						included in the response. This data will not be nested within the primary
+						collection data but embedded as a separate top-level collection(s) to avoid
+						duplicate data. 
+callback	query		Indicates that the response should be a JSONP response, setting the Content-
+						Type to application/script and wrapping the response JSON object in a function
+						name specified by the callback parameter value.
+limit		query		How many results to be returned. May include one or two values specified by 
+						a comma. First value is the range, second value is the offset.
+
+4.3. Supported Request Methods
+------------------------------
+
+4.4. Request Response
+---------------------
+All custom headers supplied by the API will begin with the X-API- prefix to differentiate them from standard headers. 
+
+The response from the API will be in JSON format. Data will not be wrapped in an envelope by default. Metadata will normally be sent as response headers instead. Should an envelope be requested (via the envelope query parameter, using JSONP or by enabling debug mode) then a wrapper object will be used, and metadata will be placed in the wrapper rather than sent as response headers. The body of the response will be placed in the 'response' property of the wrapper.
+
+
+
+
+5. References
+-------------
+[] RFC 7231: Hypertext Transfer Protocol (HTTP/1.1): Semantics and Content - http://tools.ietf.org/html/rfc7231
+[] RFC 3986: Uniform Resource Identifier (URI): Generic Syntax - http://tools.ietf.org/html/rfc3986
+[] RFC 7320: URI Design Ownership - http://tools.ietf.org/html/rfc7320
+[] http://www.ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm
+[] http://restful-api-design.readthedocs.org/en/latest/
+[] http://www.vinaysahni.com/best-practices-for-a-pragmatic-restful-api
+
+
 
 

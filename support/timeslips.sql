@@ -1,14 +1,13 @@
 -- phpMyAdmin SQL Dump
--- version 4.0.4
+-- version 3.2.0.1
 -- http://www.phpmyadmin.net
 --
--- Host: 127.0.0.1
--- Generation Time: Dec 22, 2014 at 10:10 PM
--- Server version: 5.5.32
--- PHP Version: 5.4.16
+-- Host: localhost
+-- Generation Time: Jan 25, 2015 at 10:39 PM
+-- Server version: 5.6.21
+-- PHP Version: 5.6.3
 
-SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
-SET time_zone = "+00:00";
+SET SQL_MODE="NO_AUTO_VALUE_ON_ZERO";
 
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
@@ -19,8 +18,6 @@ SET time_zone = "+00:00";
 --
 -- Database: `timeslips`
 --
-CREATE DATABASE IF NOT EXISTS `timeslips` DEFAULT CHARACTER SET utf8 COLLATE utf8_general_ci;
-USE `timeslips`;
 
 -- --------------------------------------------------------
 
@@ -35,7 +32,20 @@ CREATE TABLE IF NOT EXISTS `projects` (
   `name` varchar(150) NOT NULL,
   `description` text NOT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8 AUTO_INCREMENT=1 ;
+) ENGINE=InnoDB  DEFAULT CHARSET=utf8 AUTO_INCREMENT=4 ;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `projectstags`
+--
+
+DROP TABLE IF EXISTS `projectstags`;
+CREATE TABLE IF NOT EXISTS `projectstags` (
+  `project_id` int(10) unsigned NOT NULL,
+  `tag_id` int(10) unsigned NOT NULL,
+  PRIMARY KEY (`project_id`,`tag_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 -- --------------------------------------------------------
 
@@ -51,7 +61,20 @@ CREATE TABLE IF NOT EXISTS `roles` (
   `description` varchar(150) NOT NULL,
   `color` char(6) NOT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8 AUTO_INCREMENT=1 ;
+) ENGINE=InnoDB  DEFAULT CHARSET=utf8 AUTO_INCREMENT=3 ;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `tags`
+--
+
+DROP TABLE IF EXISTS `tags`;
+CREATE TABLE IF NOT EXISTS `tags` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `tag` varchar(50) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB  DEFAULT CHARSET=latin1 AUTO_INCREMENT=3 ;
 
 -- --------------------------------------------------------
 
@@ -68,7 +91,7 @@ CREATE TABLE IF NOT EXISTS `timeslips` (
   `time_stop` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
   `duration` int(11) NOT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8 AUTO_INCREMENT=1 ;
+) ENGINE=InnoDB  DEFAULT CHARSET=utf8 AUTO_INCREMENT=2 ;
 
 -- --------------------------------------------------------
 
@@ -86,8 +109,4 @@ CREATE TABLE IF NOT EXISTS `users` (
   `authtoken` varchar(40) NOT NULL,
   `status` tinyint(3) unsigned NOT NULL DEFAULT '1',
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8 AUTO_INCREMENT=1 ;
-
-/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
-/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
-/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+) ENGINE=InnoDB  DEFAULT CHARSET=utf8 AUTO_INCREMENT=2 ;

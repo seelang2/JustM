@@ -349,22 +349,22 @@ class Model {
 	   parsed into a proper query string
 	 */
 	public function getQueryComponents($queryArray = array()) {
-
+		// initialize query component array if it doesn't exist
 		if (empty($queryArray)) $queryArray = array();
-
 		if (!isset($queryArray['fields'])) $queryArray['fields'] = array();
 		if (!isset($queryArray['joins'])) $queryArray['joins'] = array();
 		if (!isset($queryArray['where'])) $queryArray['where'] = array();
 		if (!isset($queryArray['order'])) $queryArray['order'] = array();
 		if (!isset($queryArray['limit'])) $queryArray['limit'] = array();
 
+		// set initial value for FROM clause
 		if ($this->parentModel == null) {
 			$queryArray['from'] = $this->tableName;
 		}
 
+		// if fields haven't been specified add all fields
+		// only do this for the submodel or single models; parentmodel only gets listed explicity
 		if (empty($this->requestParams['fields'])) {
-			// if fields haven't been specified add all fields
-			// only do this for the submodel or single models; parentmodel only gets listed explicity
 			if ( ($this->parentModel == null && $this->subModel == null) ||
 				 ($this->parentModel != null && $this->subModel == null)
 				) {
@@ -380,11 +380,18 @@ class Model {
 			}
 		}
 
+		// set WHERE clause to id if set
 		if ($this->requestParams['id'] != null) {
 			array_push(
 				$queryArray['where'], 
 				$this->tableName.'.'.$this->primaryKey.' = '.$this->requestParams['id']
 			);
+		}
+
+		// if this is a single-model request, the FROM stays intact. However, when a 
+		// submodel is involved (CIC or CC) then the
+		if ($this->subModel != null && $this->tableName != $queryArray['from']) { 
+
 		}
 		
 		if ($this->subModel != null) {
@@ -392,6 +399,14 @@ class Model {
 			// 'table' => 'table1.field = table2.field'
 			$localTable = $this->tableName;
 			$remoteTable = $this->subModel->tableName;
+			if (empty($this->relationships[$remoteTable]['linkTable'])) {
+				$localTable =  $this->tableName;
+			} else {
+				$queryArray['from'] = $this->relationships[$remoteTable]['linkTable'];
+				$localTable = $this->relationships[$remoteTable]['linkTable'];
+
+			}
+
 			array_push(
 				$queryArray['joins'], 
 			    array($remoteTable => $localTable.'.'.$this->relationships[$remoteTable]['localKey'].' = '.$remoteTable.'.'.$this->relationships[$remoteTable]['remoteKey'])
@@ -467,9 +482,7 @@ class Model {
      **/
     public function get($params = array()) {
     	// override request params with passed params (if any)
-    	$requestParams = array_merge($this->requestParams, $params);
-
-    	//return array((int)microtime(true), 'GET Method called.');
+    	//$requestParams = array_merge($this->requestParams, $params);
 
 		// get query components array
 		$queryData = $this->getQueryComponents();
@@ -508,22 +521,14 @@ class Model {
 		// query built, now send to server
 		$results = $this->db->query($query);
 
+		// if there's a query error terminate with error status
 		if ($results == false) {
-			// set HTTP response code
-			header("HTTP/1.1 400 Bad Request");
-			// set error message
-			Message::addResponseKey('error_message','Query error. Please check request parameters.');
-			Message::render();
-			exit;
+			Message::stopError(400,'Query error. Please check request parameters.');
 		}
 
+		// if the result set is empty terminate with error status
 		if ($this->db->query("SELECT FOUND_ROWS()")->fetchColumn() == 0) {
-			// set HTTP response code
-			header("HTTP/1.1 404 Not Found");
-			// set error message
-			Message::addResponseKey('error_message','No results matching your request were found.');
-			Message::render();
-			exit;
+			Message::stopError(404,'No results matching your request were found.');
 		}
 
 		return $results->fetchAll(PDO::FETCH_ASSOC);

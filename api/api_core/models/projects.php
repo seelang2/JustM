@@ -19,6 +19,14 @@ class Projects extends Model {
 	            'localKey'  => 'id', 				// Foreign key field name for local model
 	            'remoteKey' => 'project_id' 		// The foreign key field name for the other model
 	            //'linkTable' => 'linkTableName' 	// Name of link table to use
+	        ),
+	    //)
+	    //'has' => array(
+	        'tags' => array( 					// Alias to use for this table (use model name if no alias)
+	            'model'     => 'Tags', 			// Name of the model (or model on other side of link table)
+	            'localKey'  => 'project_id', 	// Foreign key field name for local model
+	            'remoteKey' => 'tag_id', 		// The foreign key field name for the other model
+	            'linkTable' => 'projecttags' 	// Name of link table to use
 	        )
 	    //)
     );
