@@ -381,7 +381,8 @@ class Model {
 		}
 
 		// set WHERE clause to id if set
-		if ($this->requestParams['id'] != null) {
+		//if ($this->requestParams['id'] != null) {
+		if (!empty($this->requestParams['id'])) {
 			array_push(
 				$queryArray['where'], 
 				$this->tableName.'.'.$this->primaryKey.' = '.$this->requestParams['id']
@@ -458,8 +459,24 @@ class Model {
 
 		}
 
-		$queryData['processedQuery'] = $query;
-		return $queryData;
+		// query built, now send to server
+		$results = $this->db->query($query);
+
+		// if there's a query error terminate with error status
+		if ($results == false) {
+			Message::stopError(400,'Query error. Please check request parameters.');
+		}
+
+		// if the result set is empty terminate with error status
+		if ($this->db->query("SELECT FOUND_ROWS()")->fetchColumn() == 0) {
+			Message::stopError(404,'No results matching your request were found.');
+		}
+
+		return $results->fetchAll(PDO::FETCH_ASSOC);
+
+
+		//$queryData['processedQuery'] = $query;
+		//return $queryData;
 	} // queryTest
 
 
@@ -484,39 +501,41 @@ class Model {
     	// override request params with passed params (if any)
     	//$requestParams = array_merge($this->requestParams, $params);
 
-		// get query components array
-		$queryData = $this->getQueryComponents();
+    	// start to build query
+    	$query = "SELECT ";
 
-		$query = 'SELECT ';
-		
-		// add fields
-		$c = 0;
-		foreach ($queryData['fields'] as $field) {
-			if ($c++ > 0) $query .= ', ';
-			$query .= $field;
-		}
+    	// add fields
+    	$model = $this;
 
-		// add FROM clause
-		$query .= ' FROM ' . $queryData['from'];
+    	do {
+    		// test
+    	} while (0);
 
-		// add JOIN clause
-		if (!empty($queryData['joins'])) {
-			$query .= ' INNER JOIN ';
-			foreach ($queryData['joins'][0] as $table => $relationship) {
-				$query .= $table . ' ON ' . $relationship;
+
+		// if fields haven't been specified add all fields
+		// only do this for the submodel or single models; parentmodel only gets listed explicity
+		if (empty($this->requestParams['fields'])) {
+			if ( ($this->parentModel == null && $this->subModel == null) ||
+				 ($this->parentModel != null && $this->subModel == null)
+				) {
+				foreach ($this->getFieldList() as $field) {
+					array_push($queryArray['fields'], $this->tableName.'.'.$field['Field'].' AS '."'".$this->tableName.'.'.$field['Field']."'");
+				}
+			}
+
+		} else {
+			// only add fields specified in requestParams
+			foreach ($this->requestParams['fields'] as $field) {
+				array_push($queryArray['fields'], $this->tableName.'.'.$field.' AS '."'".$this->tableName.'.'.$field."'");
 			}
 		}
 
-		// add WHERE clause
-		$c = 0;
-		if (!empty($queryData['where'])) {
-			$query .= ' WHERE ';
-			foreach ($queryData['where'] as $field) {
-				if ($c++ > 0) $query .= ' AND ';
-				$query .= $field;
-			}
 
-		}
+
+
+    	//$query = "SELECT * FROM {$c2} INNER JOIN {$c1} ON {$localKey} = {$remoteKey} WHERE {$localKey} = {$i1}";
+
+
 
 		// query built, now send to server
 		$results = $this->db->query($query);

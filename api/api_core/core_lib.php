@@ -136,6 +136,7 @@ class Dispatcher {
 		$requestParams = Dispatcher::parseRequest($request_uri);
 		$lastModel = null;
 		$parsedRequestParams = array(); // save a copy of the fully parsed request parameters
+		$pattern = ''; // string to identify request pattern (C, CI, CIC, CC, etc.)
 
 		while ($path = array_shift($requestParams)) {
 			
@@ -149,7 +150,7 @@ class Dispatcher {
 				// if this is a valid class, we set the model name
 				$model = $params['model'];
 				$parsedRequestParams[$model] = $params;
-
+				$pattern .= 'C'; 
 			} else {
 				// otherwise we assume it's a resource identifier
 				// (if the resulting query craps out later we generate a 400 Bad Request at that time)
@@ -159,7 +160,7 @@ class Dispatcher {
 				foreach ($params as $key => $value) {
 					$parsedRequestParams[$lastModel][$key] = $value;
 				}
-
+				$pattern .= 'I';
 			}
 			// if the first parameter isn't a model then we can stop here with a bad request
 			if (empty($model)) {
@@ -167,6 +168,11 @@ class Dispatcher {
 			}
 
 			$lastModel = $model;
+		} // while
+
+		// set the pattern as an element in each request segment
+		foreach ($parsedRequestParams as $model => $segment) {
+			$parsedRequestParams[$model]['requestPattern'] = $pattern;
 		}
 
 		return $parsedRequestParams;
