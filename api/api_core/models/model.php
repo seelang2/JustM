@@ -52,7 +52,7 @@ class Model {
     function __construct(&$db, $requestParams, &$parentModel = NULL) {
         $this->parentModel = $parentModel;
         $this->db = $db;
-        $this->modelName = get_class($this);
+        $this->modelName = strtolower(get_class($this));
 
         if (empty($this->fieldList)) {
             $this->loadFieldList();
@@ -98,16 +98,20 @@ class Model {
 
     /****
       Returns the request parameters array for the entire chain
+      returns as both associative and numeric indexed array for convenience
      **/
     public function getRequestParamsChain() {
     	$requestParams = array();
+    	//$c = 0;
 
     	$rootModel = $this->getRootModel();
-    	$requestParams[get_class($rootModel)] = $rootModel->requestParams;
-    	
+    	$requestParams[strtolower(get_class($rootModel))] = $rootModel->requestParams;
+     	//$requestParams[$c++] = $rootModel->requestParams;
+   	
     	while ($rootModel->subModel != NULL) {
     		$rootModel = $rootModel->subModel;
-    		$requestParams[get_class($rootModel)] = $rootModel->requestParams;
+    		$requestParams[strtolower(get_class($rootModel))] = $rootModel->requestParams;
+    		//$requestParams[$c++] = $rootModel->requestParams;
     	}
 
     	return $requestParams;
@@ -126,24 +130,13 @@ class Model {
     }
 
     /****
-      Returns array of models attached to this model
-     **/
-    public function getRelatedModels() {
-        $rootModel = $this->getRootModel();
-        $modelList = array();
-        foreach($rootModel->relatedModels as $modelName => $modelObj) {
-            $modelList[] = $modelName;
-        }
-        return $modelList;
-    }
-
-    /****
       Returns a specified model from the array of attached models
+      Remember, only up to two models connected in any request is supported
      **/
     protected function getModel($modelName) {
-        $root = $this->getRootModel();
-
-        return $root->relatedModels[$modelName];
+        if (strtolower($this->modelName) == strtolower($modelName)) return $this;
+        if ($this->parentModel != NULL && strtolower($this->parentModel->modelName) == strtolower($modelName)) return $this->parentModel;
+        if ($this->subModel != NULL && strtolower($this->subModel->modelName) == strtolower($modelName)) return $this->subModel;
     }
 
     /****
@@ -165,14 +158,14 @@ class Model {
       Loads model table field names array from cache file or creates cache file if it doesn't exist
      **/
     protected function loadFieldList() {
-        if (file_exists(CACHE_DIR.DS.get_class($this).'.dat')) {
-            $this->fieldList = loadData(CACHE_DIR.DS.get_class($this).'.dat');
+        if (file_exists(CACHE_DIR.DS.strtolower(get_class($this)).'.dat')) {
+            $this->fieldList = loadData(CACHE_DIR.DS.strtolower(get_class($this)).'.dat');
             return;
         }
 
         $results = $this->db->query('DESCRIBE '.$this->tableName);
         $this->fieldList = $results->fetchAll(PDO::FETCH_ASSOC);
-        saveData($this->fieldList, CACHE_DIR.DS.get_class($this).'.dat');
+        saveData($this->fieldList, CACHE_DIR.DS.strtolower(get_class($this)).'.dat');
 
     } // loadFieldList
 
@@ -185,139 +178,6 @@ class Model {
         return $this->fieldList;
 
     } // getFieldList
-
-    /****
-      Dynamically builds query
-      Not currently used but kept for reference
-     **/
-    protected function buildQuery(&$parentModel, &$query, $parentAlias = NULL) {
-        if (empty($parentAlias)) $parentAlias = $parentModel->tableName;
-
-        if (!empty($parentModel->has)) {
-            foreach ($parentModel->has as $alias => $relModel) {
-                $model = $relModel['model'];
-                // create instance of related model and attach to current model
-                $parentModel->{$model} = new $model($parentModel->db); 
-
-                $query .= " LEFT JOIN ".$parentModel->{$model}->tableName.
-                          " AS ".$alias." ON ".$parentAlias.".".$parentModel->primaryKey." = ".$alias.".".$relModel['fk'];
-
-                $this->{$model}->connectModels($parentModel->{$model}, $query, $alias);        
-            }
-        }
-    }
-
-    /****
-      Recursively queries and builds result dataset
-     **/
-    protected function getRelatedData($parentModel, $id = NULL, $key = 'id', $parentAlias = NULL, $linkTable = NULL, $remoteFK = NULL) {
-        if (empty($parentAlias)) $parentAlias = get_class($parentModel);
-
-        // first, get the record specified by $key = $id
-        $query = "SELECT * FROM ". $parentModel->tableName ." AS ". $parentAlias;
-        if (!empty($linkTable)) $query .= ", $linkTable";
-        if (!empty($id)) $query .= " WHERE ".$key." = '". $id ."' ";
-        if (!empty($linkTable)) $query .= " AND {$parentModel->primaryKey} = $remoteFK";
-
-        $result = $parentModel->db->query($query);
-        if (!$result) throw new Exception("SQL query error. Query: $query");
-
-        $tmp = $result->fetchAll(PDO::FETCH_ASSOC);
-
-        // for each result row:
-            // if there are any connected models, for each model:
-                // get the records that relate to the row
-        foreach ($tmp as $rowKey => $row) {
-            // get the $row's id
-            $rowID = $row[$parentModel->primaryKey];
-
-            if (!empty($parentModel->relationships['has'])) {
-                foreach ($parentModel->relationships['has'] as $alias => $relModel) {
-                    $modelName = $relModel['model'];
-                    $model = $parentModel->getModel($modelName);
-
-                    // this is a 1-M, so the FK is in the related table, so get the FK name
-                    $fk = $relModel['fk'];
-
-                    $tmp[$rowKey][$alias] = $model->getRelatedData(
-                        $model,
-                        $rowID,
-                        $alias.".".$fk,
-                        $alias
-                    );
-               }
-            } // if has
-
-            if (!empty($parentModel->relationships['belongsTo'])) {
-                foreach ($parentModel->relationships['belongsTo'] as $alias => $relModel) {
-                    $modelName = $relModel['model'];
-                    $model = $parentModel->getModel($modelName);
-
-                    // this is a M-1, so the FK is in this table, so get the FK name
-                    $fk = $relModel['fk'];
-                    // now get the related row ID from the row's FK
-                    $fkID = $row[$fk];
-
-                    $tmp[$rowKey][$alias] = $model->getRelatedData(
-                        $model,
-                        $fkID,
-                        $alias.".".$model->primaryKey,
-                        $alias
-                    );
-               }
-            } // if belongsTo
-
-            if (!empty($parentModel->relationships['hasAndBelongsToMany'])) {
-                foreach ($parentModel->relationships['hasAndBelongsToMany'] as $alias => $relModel) {
-                    $modelName = $relModel['model'];
-                    $model = $parentModel->getModel($modelName);
-
-                    // this is a 1-M<->M-1, so the FK is in the link table, so get the FK name
-                    $fk = $relModel['fk'];
-
-                    $tmp[$rowKey][$alias] = $model->getRelatedData(
-                        $model,
-                        $rowID,
-                        $relModel['linkTable'].".".$fk,
-                        $alias,
-                        $relModel['linkTable'],
-                        $relModel['linkTable'].".".$relModel['remoteFK']
-                    );
-               }
-            } // if hasAndBelongsToMany
-
-
-        } // foreach $tmp
-
-        return $tmp;
-
-    } // getRelatedData
-
-    /****
-      -
-     **/
-    public function getAll($params = NULL) {
-        
-        $data[get_class($this)] = $this->getRelatedData($this);
-
-        return $data;
-
-    } // getAll
-
-    /****
-      -
-     **/
-    public function getOne($params = NULL) {
-
-        if (count($params) != 1) {
-            throw new Exception("Incorrect number of parameters for ".get_class($this)."->getOne");
-        }
-
-        $data[get_class($this)] = $this->getRelatedData($this, $params[0]);
-
-        return $data;
-
-    } // getOne
 
     /****
       -
@@ -501,41 +361,93 @@ class Model {
     	// override request params with passed params (if any)
     	//$requestParams = array_merge($this->requestParams, $params);
 
-    	// start to build query
-    	$query = "SELECT ";
+    	$requestParams = $this->getRequestParamsChain();
 
-    	// add fields
-    	$model = $this;
+    	// get list of collections from request and get request pattern
+    	// also get any explicitly defined fields for display
+    	$models = array();
+    	$requestPattern = NULL;
+    	$fields = array();
 
-    	do {
-    		// test
-    	} while (0);
+    	foreach ($requestParams as $modelName => $param) {
+    		array_push($models, $modelName);
+    		$tableName = $this->getModel($modelName)->tableName;
+    		$requestPattern = $param['requestPattern'];
+    		if (!empty($param['fields'])) {
+    			foreach ($param['fields'] as $field) {
+    				array_push($fields, $tableName.'.'.$field.' AS '."'".$tableName.'.'.$field."'");
+    			}
+    		}
+    	}
+    	reset($requestParams); // reset pointer back to beginning of array
 
+    	// determine the target and related models based on the request pattern
+    	switch(true) {
+    		case $requestPattern == 'C' || $requestPattern == 'CI':
+    			$targetModelName = $models[0];
+    			$targetTable = $this->getModel($targetModelName)->tableName;
+    			$relatedModelName = NULL;
+    			$relatedTable = NULL;
+    		break;
 
-		// if fields haven't been specified add all fields
-		// only do this for the submodel or single models; parentmodel only gets listed explicity
-		if (empty($this->requestParams['fields'])) {
-			if ( ($this->parentModel == null && $this->subModel == null) ||
-				 ($this->parentModel != null && $this->subModel == null)
-				) {
-				foreach ($this->getFieldList() as $field) {
-					array_push($queryArray['fields'], $this->tableName.'.'.$field['Field'].' AS '."'".$this->tableName.'.'.$field['Field']."'");
-				}
-			}
+    		case $requestPattern == 'CIC' || $requestPattern == 'CC':
+    			$targetModelName = $models[1];
+     			$targetTable = $this->getModel($targetModelName)->tableName;
+	   			$relatedModelName = $models[0];
+    			$relatedTable = $this->getModel($relatedModelName)->tableName;
 
-		} else {
-			// only add fields specified in requestParams
-			foreach ($this->requestParams['fields'] as $field) {
-				array_push($queryArray['fields'], $this->tableName.'.'.$field.' AS '."'".$this->tableName.'.'.$field."'");
+    		break;
+    	}
+
+    	// if the target model doesn't have a field list defined, get all fields
+		if (empty($requestParams[$targetModelName]['fields'])) {
+			foreach ($this->getModel($modelName)->getFieldList() as $field) {
+				array_push($fields, $targetTable.'.'.$field['Field'].' AS '."'".$targetTable.'.'.$field['Field']."'");
 			}
 		}
 
+		// begin building query
+    	$query = 'SELECT '. join(',',$fields);
 
+		switch($requestPattern) {
+			case 'C':
+				$query .= " FROM {$targetTable}";
+			break;
+			
+			case 'CI':
+				$id = $requestParams[$targetModelName]['id'];
+				$query .= " FROM {$targetTable} WHERE id = {$id}";
+			break;
+			
+			case 'CIC':
+				$id = $requestParams[$relatedModelName]['id'];
+				
+				// check the target model's relationship to the related model
+				if (!empty($this->getModel($targetModelName)->relationships[$relatedModelName]['linkTable'])) {
+					$relatedTable = $this->getModel($targetModelName)->relationships[$relatedModelName]['linkTable'];
+				}
 
+				$localKey = $this->getModel($targetModelName)->relationships[$relatedModelName]['localKey'];
+				$remoteKey = $this->getModel($targetModelName)->relationships[$relatedModelName]['remoteKey'];
+				
+				$query .= " FROM {$targetTable} INNER JOIN {$relatedTable} ON {$targetTable}.{$localKey} = {$relatedTable}.{$remoteKey} WHERE {$targetTable}.{$localKey} = {$id}";
+			break;
+			
+			case 'CC':
+				// check the target model's relationship to the related model
+				if (!empty($this->getModel($targetModelName)->relationships[$relatedModelName]['linkTable'])) {
+					$relatedTable = $this->getModel($targetModelName)->relationships[$relatedModelName]['linkTable'];
+				}
 
-    	//$query = "SELECT * FROM {$c2} INNER JOIN {$c1} ON {$localKey} = {$remoteKey} WHERE {$localKey} = {$i1}";
-
-
+				$localKey = $this->getModel($targetModelName)->relationships[$relatedModelName]['localKey'];
+				$remoteKey = $this->getModel($targetModelName)->relationships[$relatedModelName]['remoteKey'];
+				
+				$query .= " FROM {$targetTable} INNER JOIN {$relatedTable} ON {$targetTable}.{$localKey} = {$relatedTable}.{$remoteKey}";
+			break;
+		} // switch
+   	
+    	//if (DEBUG_MODE) Message::addDebugMessage('fieldList', $this->getFieldList());
+    	if (DEBUG_MODE) Message::addDebugMessage('queryString', $query);
 
 		// query built, now send to server
 		$results = $this->db->query($query);
@@ -550,7 +462,15 @@ class Model {
 			Message::stopError(404,'No results matching your request were found.');
 		}
 
-		return $results->fetchAll(PDO::FETCH_ASSOC);
+		// retrieve result set from db
+		$data = $results->fetchAll(PDO::FETCH_ASSOC);
+
+		// if there were any tables listed in the attach query parameter, do separate queries for those
+		// and attach to results
+
+		// coming soon
+
+		return $data;
 
     } // get
 

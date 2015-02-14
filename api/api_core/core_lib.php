@@ -203,7 +203,7 @@ class Dispatcher {
 		//if (DEBUG_MODE) Message::addDebugMessage('modelRequestParams', $model->getRequestParams());
 		if (DEBUG_MODE) Message::addDebugMessage('requestParamsChain', $model->getRequestParamsChain());
 		//if (DEBUG_MODE) Message::addDebugMessage('modelFieldList', $model->getFieldList());
-		if (DEBUG_MODE) Message::addDebugMessage('queryTest', $model->queryTest());
+		//if (DEBUG_MODE) Message::addDebugMessage('queryTest', $model->queryTest());
 
 		// Route the processing to the appropriate Model method
 		// the simplest approach would be to name methods on the model after the request
