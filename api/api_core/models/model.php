@@ -156,7 +156,18 @@ class Model {
 
     /****
       Loads model table field names array from cache file or creates cache file if it doesn't exist
-     **/
+      Produces an array where each field has the following keys:
+ 
+		{
+			"Field": "id",
+			"Type": "int(10) unsigned",
+			"Null": "NO",
+			"Key": "PRI",
+			"Default": null,
+			"Extra": "auto_increment"
+		}
+
+    **/
     protected function loadFieldList() {
         if (file_exists(CACHE_DIR.DS.strtolower(get_class($this)).'.dat')) {
             $this->fieldList = loadData(CACHE_DIR.DS.strtolower(get_class($this)).'.dat');
@@ -170,7 +181,7 @@ class Model {
     } // loadFieldList
 
     /****
-      Returns dump of fieldList
+      Returns dump of fieldList array.
      **/
     public function getFieldList() {
         if (empty($this->fieldList)) return false;
@@ -180,164 +191,20 @@ class Model {
     } // getFieldList
 
     /****
+      Returns PK for this model's table
+     **/
+    public function getPrimaryKey() {
+
+        return $this->primaryKey;
+
+    } // getPrimaryKey
+
+    /****
       -
      **/
     public function count($params = NULL) {
 
     } // count
-
-	/***
-	   The idea behind building the queries is to recurse through the model chain, constructing
-	   an array in the following structure:
-
-	   query: {
-		   fields: [ field1, field2, ... ],
-		   from: origin_table,
-		   joins: [
-		      { table: relationship },
-		      ...
-		   ],
-		   where: [ clause1, clause2, ... ],
-		   order: [
-		      { field: direction },
-		      ...
-		   ],
-		   limit: [ range, offset ]
-	   }
-
-	   Using this structure, the components of the query can be added in any order, and later
-	   parsed into a proper query string
-	 */
-	public function getQueryComponents($queryArray = array()) {
-		// initialize query component array if it doesn't exist
-		if (empty($queryArray)) $queryArray = array();
-		if (!isset($queryArray['fields'])) $queryArray['fields'] = array();
-		if (!isset($queryArray['joins'])) $queryArray['joins'] = array();
-		if (!isset($queryArray['where'])) $queryArray['where'] = array();
-		if (!isset($queryArray['order'])) $queryArray['order'] = array();
-		if (!isset($queryArray['limit'])) $queryArray['limit'] = array();
-
-		// set initial value for FROM clause
-		if ($this->parentModel == null) {
-			$queryArray['from'] = $this->tableName;
-		}
-
-		// if fields haven't been specified add all fields
-		// only do this for the submodel or single models; parentmodel only gets listed explicity
-		if (empty($this->requestParams['fields'])) {
-			if ( ($this->parentModel == null && $this->subModel == null) ||
-				 ($this->parentModel != null && $this->subModel == null)
-				) {
-				foreach ($this->getFieldList() as $field) {
-					array_push($queryArray['fields'], $this->tableName.'.'.$field['Field'].' AS '."'".$this->tableName.'.'.$field['Field']."'");
-				}
-			}
-
-		} else {
-			// only add fields specified in requestParams
-			foreach ($this->requestParams['fields'] as $field) {
-				array_push($queryArray['fields'], $this->tableName.'.'.$field.' AS '."'".$this->tableName.'.'.$field."'");
-			}
-		}
-
-		// set WHERE clause to id if set
-		//if ($this->requestParams['id'] != null) {
-		if (!empty($this->requestParams['id'])) {
-			array_push(
-				$queryArray['where'], 
-				$this->tableName.'.'.$this->primaryKey.' = '.$this->requestParams['id']
-			);
-		}
-
-		// if this is a single-model request, the FROM stays intact. However, when a 
-		// submodel is involved (CIC or CC) then the
-		if ($this->subModel != null && $this->tableName != $queryArray['from']) { 
-
-		}
-		
-		if ($this->subModel != null) {
-			// add table to join. Key is table name; value is relationship as string
-			// 'table' => 'table1.field = table2.field'
-			$localTable = $this->tableName;
-			$remoteTable = $this->subModel->tableName;
-			if (empty($this->relationships[$remoteTable]['linkTable'])) {
-				$localTable =  $this->tableName;
-			} else {
-				$queryArray['from'] = $this->relationships[$remoteTable]['linkTable'];
-				$localTable = $this->relationships[$remoteTable]['linkTable'];
-
-			}
-
-			array_push(
-				$queryArray['joins'], 
-			    array($remoteTable => $localTable.'.'.$this->relationships[$remoteTable]['localKey'].' = '.$remoteTable.'.'.$this->relationships[$remoteTable]['remoteKey'])
-			);
-			 
-		}
-
-		if ($this->subModel != null) {
-			return $this->subModel->getQueryComponents($queryArray);
-		} 
-
-		return $queryArray;
-	} // getQueryComponents
-
-	public function queryTest() {
-		// testing building a SELECT
-
-		// get query components array
-		$queryData = $this->getQueryComponents();
-
-		$query = 'SELECT ';
-		
-		// add fields
-		$c = 0;
-		foreach ($queryData['fields'] as $field) {
-			if ($c++ > 0) $query .= ', ';
-			$query .= $field;
-		}
-
-		// add FROM clause
-		$query .= ' FROM ' . $queryData['from'];
-
-		// add JOIN clause
-		if (!empty($queryData['joins'])) {
-			$query .= ' INNER JOIN ';
-			foreach ($queryData['joins'][0] as $table => $relationship) {
-				$query .= $table . ' ON ' . $relationship;
-			}
-		}
-
-		// add WHERE clause
-		$c = 0;
-		if (!empty($queryData['where'])) {
-			$query .= ' WHERE ';
-			foreach ($queryData['where'] as $field) {
-				if ($c++ > 0) $query .= ' AND ';
-				$query .= $field;
-			}
-
-		}
-
-		// query built, now send to server
-		$results = $this->db->query($query);
-
-		// if there's a query error terminate with error status
-		if ($results == false) {
-			Message::stopError(400,'Query error. Please check request parameters.');
-		}
-
-		// if the result set is empty terminate with error status
-		if ($this->db->query("SELECT FOUND_ROWS()")->fetchColumn() == 0) {
-			Message::stopError(404,'No results matching your request were found.');
-		}
-
-		return $results->fetchAll(PDO::FETCH_ASSOC);
-
-
-		//$queryData['processedQuery'] = $query;
-		//return $queryData;
-	} // queryTest
 
 
    /****
@@ -369,13 +236,13 @@ class Model {
     	$requestPattern = NULL;
     	$fields = array();
 
-    	foreach ($requestParams as $modelName => $param) {
-    		array_push($models, $modelName);
-    		$tableName = $this->getModel($modelName)->tableName;
-    		$requestPattern = $param['requestPattern'];
-    		if (!empty($param['fields'])) {
-    			foreach ($param['fields'] as $field) {
-    				array_push($fields, $tableName.'.'.$field.' AS '."'".$tableName.'.'.$field."'");
+    	foreach ($requestParams as $tmpModelName => $tmpParam) {
+    		array_push($models, $tmpModelName);
+    		$tmpTableName = $this->getModel($tmpModelName)->tableName;
+    		$requestPattern = $tmpParam['requestPattern'];
+    		if (!empty($tmpParam['fields'])) {
+    			foreach ($tmpParam['fields'] as $tmpField) {
+    				array_push($fields, $tmpTableName.'.'.$tmpField.' AS '."'".$tmpTableName.'.'.$tmpField."'");
     			}
     		}
     	}
@@ -385,23 +252,30 @@ class Model {
     	switch(true) {
     		case $requestPattern == 'C' || $requestPattern == 'CI':
     			$targetModelName = $models[0];
-    			$targetTable = $this->getModel($targetModelName)->tableName;
+    			$targetModel = $this->getModel($targetModelName);
+    			$targetTable = $targetModel->tableName;
     			$relatedModelName = NULL;
+    			$relatedModel = NULL;
     			$relatedTable = NULL;
     		break;
 
     		case $requestPattern == 'CIC' || $requestPattern == 'CC':
     			$targetModelName = $models[1];
-     			$targetTable = $this->getModel($targetModelName)->tableName;
+      			$targetModel = $this->getModel($targetModelName);
+	   			$targetTable = $targetModel->tableName;
 	   			$relatedModelName = $models[0];
+    			$relatedModel = $this->getModel($relatedModelName);
     			$relatedTable = $this->getModel($relatedModelName)->tableName;
-
     		break;
     	}
 
+    	// add in the primary keys for the models
+    	array_unshift($fields, $targetTable.'.'.$targetModel->primaryKey.' AS '."'".$targetTable.'.'."PRI'");
+    	if ($relatedModelName != NULL) array_unshift($fields, $relatedTable.'.'.$this->getModel($relatedModelName)->primaryKey.' AS '."'".$relatedTable.'.'."PRI'");
+
     	// if the target model doesn't have a field list defined, get all fields
 		if (empty($requestParams[$targetModelName]['fields'])) {
-			foreach ($this->getModel($modelName)->getFieldList() as $field) {
+			foreach ($targetModel->getFieldList() as $field) {
 				array_push($fields, $targetTable.'.'.$field['Field'].' AS '."'".$targetTable.'.'.$field['Field']."'");
 			}
 		}
@@ -446,7 +320,7 @@ class Model {
 			break;
 		} // switch
    	
-    	//if (DEBUG_MODE) Message::addDebugMessage('fieldList', $this->getFieldList());
+    	if (DEBUG_MODE) Message::addDebugMessage('fieldList', $this->getFieldList());
     	if (DEBUG_MODE) Message::addDebugMessage('queryString', $query);
 
 		// query built, now send to server
@@ -463,14 +337,41 @@ class Model {
 		}
 
 		// retrieve result set from db
-		$data = $results->fetchAll(PDO::FETCH_ASSOC);
+		$tmpdata = $results->fetchAll(PDO::FETCH_ASSOC);
+
+		// parse data into more useful structure
+		/*
+			{
+				collection: [
+					{
+						...
+						subcollection: [
+							{ }...
+						]
+					}
+				]
+			}
+
+			the bigger question is how to get this to sort properly. i'd need to save the PK and FK
+			as special columns in the result set, but not return them as part of the data as the info
+			is there for internal processing purposes. So I need to be able to extract out the PRI
+		*/
+
+		$data = array();
+		foreach ($tmpdata as $row) {
+			// loop through fields
+			foreach ($row as $fieldName => $fieldValue) {
+
+			}
+
+		}
 
 		// if there were any tables listed in the attach query parameter, do separate queries for those
 		// and attach to results
 
 		// coming soon
 
-		return $data;
+		return $tmpdata;
 
     } // get
 
