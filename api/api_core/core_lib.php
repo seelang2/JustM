@@ -59,7 +59,7 @@ function loaddata($datafile) {
 
 // static classes
 
-class Authenticate {
+class Auth {
 
 }
 
@@ -196,7 +196,7 @@ class Dispatcher {
 		$modelName = array_shift(array_keys($parsedRequestParams));
 
 		// instantiate the root model and pass the request parameters into it
-		$model = new $modelName($db, $parsedRequestParams);
+		$model = new $modelName($db, $parsedRequestParams, $_GET);
 
 		//if (DEBUG_MODE) Message::addDebugMessage('parentModel', $model->parentModel->tableName);
 		//if (DEBUG_MODE) Message::addDebugMessage('subModel', $model->subModel->tableName);
@@ -266,9 +266,24 @@ class Message {
 	  Allows non-body debug data to be included in the response. 
 	  NOTE: Adding debug messages will always cause an envelope to be used 
 	  regardless of the DEBUG_MODE or $useEnvelope settings.
+
+	  The $serialize flag will turn the key into an associative array, and the 
+	  entry will have its index set as the NET microtime since the request started
 	 **/
-	static public function addDebugMessage($key, $data) {
-		Message::$debugMessages[$key] = $data;
+	static public function addDebugMessage($key, $data, $serialize = true) {
+		if ($serialize) {
+			// take the NET microtimestamp, convert to a string
+			//$tsKey = ''.(int)(microtime(true)*1000);
+			$tsKey = ''.((int)(microtime(true)*1000)-(int)($_SERVER['REQUEST_TIME_FLOAT']*1000));
+			if (isset(Message::$debugMessages[$key])) {
+				Message::$debugMessages[$key][$tsKey] = $data;
+			} else {
+				Message::$debugMessages[$key] = array($tsKey => $data);
+			}
+		} else {
+			// don't convert to array, just (over)write key
+			Message::$debugMessages[$key] = $data;
+		}
 	}
 
 	/****
