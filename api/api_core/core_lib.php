@@ -119,11 +119,12 @@ class Dispatcher {
 		foreach ($paramsArray as $paramString) {
 			$paramSet = explode('=', $paramString);
 			$valueArray = explode(',', $paramSet[1]);
-			if (count($valueArray) == 1) {
-				$result[$paramSet[0]] = $valueArray[0];
-			} else {
+			// always return value as an array for consistency
+			//if (count($valueArray) == 1) {
+			//	$result[$paramSet[0]] = $valueArray[0];
+			//} else {
 				$result[$paramSet[0]] = $valueArray;
-			}
+			//}
 		}
 		return $result;
 	} // parsePath

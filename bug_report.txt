@@ -3,6 +3,10 @@ API Bug Reports and Fixes
 
 Known Issues
 ------------
+Link table connections not working in multi-collection requests
+
+The attach query parameter currently doesn't support link table relationships
+
 Model->get() parameter override not working. Busted implementation removed. Workaround is to set request parameters in constructor and just call get() without parameters. 
 
 Fixed Bugs

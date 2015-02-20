@@ -258,7 +258,7 @@ class Model {
      **/
     public function get($params = NULL) {
     	if (DEBUG_MODE) Message::addDebugMessage('Model-get', 'called on model '.$this->modelName);
-    	$queryList = array();
+    	//$queryList = array();
 
      	// override request params with passed params (if any)
 	   	//if ($params === NULL) {
@@ -358,7 +358,7 @@ class Model {
 			break;
 			
 			case 'CIC':
-				$id = $requestParams[$targetModelName]['id'];
+				$id = $requestParams[$relatedModelName]['id'];
 				if (!is_array($id)) $id = $this->sanitize($id);
 				
 				// check the target model's relationship to the related model
@@ -414,24 +414,24 @@ class Model {
 		}
 
 		if (DEBUG_MODE) Message::addDebugMessage('queries', $query); // debug messages are now serialized
-		array_push($queryList, $query); // append query to query log
+		//array_push($queryList, $query); // append query to query log
 
 		// query built, now send to server
 		$results = $this->db->query($query);
 
 		// if there's a query error terminate with error status
 		if ($results == false) {
- 		   	if (DEBUG_MODE) Message::addDebugMessage('queries', $queryList);
+ 		   	//if (DEBUG_MODE) Message::addDebugMessage('queries', $query);
+    		//if (DEBUG_MODE) Message::addDebugMessage('keys', $keys);
 			Message::stopError(400,'Query error. Please check request parameters.');
 		}
 
 		// if the result set is empty terminate with error status
 		if ($this->db->query("SELECT FOUND_ROWS()")->fetchColumn() == 0) {
+ 		   	//if (DEBUG_MODE) Message::addDebugMessage('queries', $query);
+  		  	//if (DEBUG_MODE) Message::addDebugMessage('keys', $keys);
 			Message::stopError(404,'No results matching your request were found.');
 		}
-
-		// retrieve result set from db
-		//$tmpdata = $results->fetchAll(PDO::FETCH_ASSOC);
 
 		// parse data into more useful structure
 		/*
@@ -455,58 +455,131 @@ class Model {
 		$data[$tmpModelName] = array();
 		$keys = array();
 		$keys[$tmpModelName] = array();
+		// if there is a related model, we initialize its key array as well
+		if ($relatedModel !== NULL) $keys['remoteKey'] = array();
 		// loop through result set and parse
 		while ($row = $results->fetch(PDO::FETCH_ASSOC)) {
 			// extract PK and add to key list
 			array_push($keys[$tmpModelName], $row['PRI']);
+			$tmpId = $row['PRI'];
 			unset($row['PRI']); // for internal use - only return requested fields
 
+			// add the data rows if this is a single-collection request
 			if ($requestPattern == 'C' || $requestPattern == 'CI') {
 				array_push($data[$tmpModelName], $row);
 			}
 
-
-
-		} // while row
-
-
-		/*
-		foreach ($tmpdata as $row) {
-			// loop through fields
-			foreach ($row as $fieldName => $fieldValue) {
-
+			// add the data rows plus FK 
+			if ($requestPattern == 'CC' || $requestPattern == 'CIC') {
+				$row[$remoteKey] = $tmpId;
+				$row[$targetModelName] = array();
+				array_push($data[$tmpModelName], $row);
 			}
 
-		}
-		*/
+			// if there is a related model, get the FK and store the key
+			//if ($relatedModel !== NULL) array_push($keys[$relatedModelName], $row[$remoteKey]);
+			//if ($relatedModel !== NULL) array_push($keys['remoteKey'], $row[$localKey]);
+		} // while row
+
+		// if there's a related model get its data
+		if ($relatedModel !== NULL) {
+    		// point alias to target model
+    		$tmpModelName = $targetModelName;
+    		$tmpModel = $targetModel;
+    		$tmpTable = $targetTable;
+
+    		// add FK to result set
+    		array_unshift($fields[$tmpModelName], $tmpTable.'.'.$localKey.' AS FK');
+
+			// set up second query as manual inner join
+	    	$query = 'SELECT '. join(',',$fields[$tmpModelName]).' FROM '.$tmpTable.' WHERE '.$localKey.' IN('.join(',', $keys[$relatedModelName]).')';
+
+			if ( $relatedModel === NULL && (!empty($limit)) ) { 
+				$query .= ' LIMIT '.join(',', $limit);
+			}
+
+			if (DEBUG_MODE) Message::addDebugMessage('queries', $query); // debug messages are now serialized
+
+			// query built, now send to server
+			$results = $this->db->query($query);
+
+			// if there's a query error terminate with error status
+			if ($results == false) {
+	 		   	//if (DEBUG_MODE) Message::addDebugMessage('queries', $query);
+	    		//if (DEBUG_MODE) Message::addDebugMessage('keys', $keys);
+				Message::stopError(400,'Query error. Please check request parameters.');
+			}
+
+			// if the result set is empty terminate with error status
+			if ($this->db->query("SELECT FOUND_ROWS()")->fetchColumn() == 0) {
+	 		   	//if (DEBUG_MODE) Message::addDebugMessage('queries', $query);
+	  		  	//if (DEBUG_MODE) Message::addDebugMessage('keys', $keys);
+				Message::stopError(404,'No results matching your request were found.');
+			}
+
+			//$data = array();
+			//$data[$tmpModelName] = array();
+			//$keys = array();
+			$keys[$tmpModelName] = array();
+			// loop through result set and parse
+			while ($row = $results->fetch(PDO::FETCH_ASSOC)) {
+				// extract PK and add to key list
+				array_push($keys[$tmpModelName], $row['PRI']);
+				$tmpId = $row['FK'];
+				unset($row['PRI']); // for internal use - only return requested fields
+				unset($row['FK']); // for internal use - only return requested fields
+				/*
+				// add the data rows if this is a single-collection request
+				if ($requestPattern == 'CIC') {
+					
+					array_push($data[$tmpModelName], $row);
+				}
+				if ($requestPattern == 'CC') {
+					array_push($data[$tmpModelName], $row);
+				}
+				*/
+
+				$tmpArr = array_flip($keys[$relatedModelName]);
+				// create related model row if it doesn't exist
+				// no, really, it should exist.
+				//if (!isset($data[$relatedModelName][$tmpArr[$tmpId]])) $data[$relatedModelName][$tmpArr[$tmpId]] = array();
+				//if (!isset($data[$relatedModelName][$tmpArr[$tmpId]][$targetModelName])) $data[$relatedModelName][$tmpArr[$tmpId]][$targetModelName] = array();
+				
+				// add target model row to project row
+				array_push($data[$relatedModelName][$tmpArr[$tmpId]][$targetModelName], $row);
+
+
+			} // while row
+
+		} // if relatedmodel
+
+    	if (DEBUG_MODE) Message::addDebugMessage('querydata', $data);
+    	if (DEBUG_MODE) Message::addDebugMessage('keys', $keys);
+
 
 		// if there were any tables listed in the attach query parameter, do separate queries for those
 		// and attach to results
-		//if ( (!empty($_GET['attach'])) && (isset($requestParams['ignoreGlobal']) && $requestParams['ignoreGlobal'] === true) ) {
 		if ( (!empty($this->globalParams['attach'])) ) {
 			foreach (explode(',',$this->globalParams['attach']) as $attachedModelName) {
 				// define a bucket for the attached table
 				$data[$attachedModelName] = array();
 				// check the target model's relationship to the attached model to build query
 				// if the models aren't related, don't bother and bail
-				if (empty($tmpModel->relationships[$attachedModelName])) break;
+				if (empty($targetModel->relationships[$attachedModelName])) break;
 
 				// get the attached model records based on target model PK using IN()
 				$keys[$attachedModelName] = array();
-				$attachedModelPK = $tmpModel->relationships[$attachedModelName]['remoteKey'];
-				$attachedModelFK = $tmpModel->relationships[$attachedModelName]['localKey'];
+				$attachedModelPK = $targetModel->relationships[$attachedModelName]['remoteKey'];
+				$attachedModelFK = $targetModel->relationships[$attachedModelName]['localKey'];
 
 				// loop through target
-				foreach ($data[$tmpModelName] as $row) {
+				foreach ($data[$targetModelName] as $row) {
 					if (!in_array($row[$attachedModelFK], $keys[$attachedModelName])) array_push($keys[$attachedModelName], $row[$attachedModelFK]);
 				}
-
-				//$attachedModel = new $attachedModelName($this->db);
-				//$data[$attachedModelName] = $attachedModel->get(array('id' => '1', 'ignoreGlobal' => true));
-				$attachedModel = new $attachedModelName($this->db, array($attachedModelName => array('id' => $keys[$attachedModelName], 'requestPattern' => 'CI')));
-				//$data[$attachedModelName] = $attachedModel->get();
-				
     	if (DEBUG_MODE) Message::addDebugMessage('keys', $keys);
+
+				$attachedModel = new $attachedModelName($this->db, array($attachedModelName => array('id' => $keys[$attachedModelName], 'requestPattern' => 'CI')));
+				
 				// and append to bucket
 				$data = array_merge($data, $attachedModel->get());
 
@@ -514,7 +587,7 @@ class Model {
 		} // if attached
 
     	//if (DEBUG_MODE) Message::addDebugMessage('fieldList', $this->getFieldList());
-    	//if (DEBUG_MODE) Message::addDebugMessage('keys', $keys);
+    	if (DEBUG_MODE) Message::addDebugMessage('keys', $keys);
     	//if (DEBUG_MODE) Message::addDebugMessage('queries', $queryList);
     	if (DEBUG_MODE) Message::addDebugMessage('querydata', $data);
 		return $data;
