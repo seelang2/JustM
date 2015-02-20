@@ -139,16 +139,25 @@ envelope	query		Indicates whether to use an envelope around the response. If a
 						wrapper is used, any metadata normally passed as HTTP headers
 						will be placed in the envelope instead. The request response 
 						data will be placed inside the 'response' property.
+
 fields		path 		A comma-separated list of the fields to be included in the response.
+						
+						Note: If this parameter is omitted then ALL fields will be included by default.
+
 attach		query		A comma-separated list of models related to the target collection to be
 						included in the response. This data will not be nested within the primary
 						collection data but embedded as a separate top-level collection(s) to avoid
 						duplicate data. 
+						
+						Note: The local key MUST be included in the field list of the target collection
+						or the attach will produce a Status 400 query error.
+
 callback	query		Indicates that the response should be a JSONP response, setting the Content-
 						Type to application/script and wrapping the response JSON object in a function
 						name specified by the callback parameter value.
+
 limit		query		How many results to be returned. May include one or two values specified by 
-						a comma. First value is the range, second value is the offset.
+						a comma. First value is the offset, second value is the range.
 
 4.3. Supported Request Methods
 ------------------------------

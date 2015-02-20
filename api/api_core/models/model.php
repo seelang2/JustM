@@ -257,7 +257,7 @@ class Model {
 
      **/
     public function get($params = NULL) {
-    	if (DEBUG_MODE) Message::addDebugMessage('Model-get', 'called on model '.$this->modelName);
+    	//if (DEBUG_MODE) Message::addDebugMessage('Model-get', 'called on model '.$this->modelName);
     	//$queryList = array();
 
      	// override request params with passed params (if any)
@@ -268,7 +268,7 @@ class Model {
     	//	if (!empty($params['id'])) $requestParams[strtolower(get_class($this))]['requestPattern'] = 'CI';
     	//}
 
-    	if (DEBUG_MODE) Message::addDebugMessage('requestParams', $requestParams);
+    	//if (DEBUG_MODE) Message::addDebugMessage('requestParams', $requestParams);
 
     	// get list of collections from request and get request pattern
     	// also get any explicitly defined fields for each model
@@ -323,7 +323,7 @@ class Model {
 			}
 		}
 
-		if (DEBUG_MODE) Message::addDebugMessage('fieldsArray', $fields);
+		//if (DEBUG_MODE) Message::addDebugMessage('fieldsArray', $fields);
 
     	// the join will be done manually, so we need to split this into multiple queries
     	// the first query will either be for the related model if any or just the target model
@@ -339,7 +339,7 @@ class Model {
     	}
 
 		// begin building query
-    	$query = 'SELECT '. join(',',$fields[$tmpModelName]);
+    	$query = 'SELECT DISTINCT '. join(',',$fields[$tmpModelName]);
 
 		switch($requestPattern) {
 			case 'C':
@@ -390,7 +390,8 @@ class Model {
 				
 				//$query .= " FROM {$targetTable} INNER JOIN {$relatedTable} ON {$targetTable}.{$localKey} = {$relatedTable}.{$remoteKey}";
 				// using join decomposition so only perform the first query
-				$query .= " FROM {$relatedTable}";
+				//$query .= " FROM {$relatedTable}";
+				$query .= " FROM {$relatedTable} INNER JOIN {$targetTable} ON {$targetTable}.{$localKey} = {$relatedTable}.{$remoteKey}";
 			break;
 		} // switch
 
@@ -455,8 +456,25 @@ class Model {
 		$data[$tmpModelName] = array();
 		$keys = array();
 		$keys[$tmpModelName] = array();
-		// if there is a related model, we initialize its key array as well
-		if ($relatedModel !== NULL) $keys['remoteKey'] = array();
+
+		// check and set attach query parameter data
+		if ( (!empty($this->globalParams['attach'])) ) {
+			$attachedModels = array(); // create empty bucket for valid attached models
+			foreach (explode(',',$this->globalParams['attach']) as $attachedModelName) {
+				// check the target model's relationship to the attached model to build query
+				// if the models aren't related, don't bother and bail to next attached model
+				if (empty($targetModel->relationships[$attachedModelName])) continue;
+				array_push($attachedModels, $attachedModelName); // add to list of valid attached models
+				// define a bucket for the attached table
+				$data[$attachedModelName] = array();
+
+				// get the attached model records based on target model PK using IN()
+				$keys[$attachedModelName] = array();
+				$keys[$attachedModelName]['RK'] = $targetModel->relationships[$attachedModelName]['remoteKey'];
+				$keys[$attachedModelName]['LK'] = $targetModel->relationships[$attachedModelName]['localKey'];
+			} // foreach
+		}
+
 		// loop through result set and parse
 		while ($row = $results->fetch(PDO::FETCH_ASSOC)) {
 			// extract PK and add to key list
@@ -466,6 +484,17 @@ class Model {
 
 			// add the data rows if this is a single-collection request
 			if ($requestPattern == 'C' || $requestPattern == 'CI') {
+				foreach ($attachedModels as $attachedModelName) {
+					$attachedModelLK = $keys[$attachedModelName]['LK'];
+					$attachedModelRK = $keys[$attachedModelName]['RK'];
+					//unset($keys[$attachedModelName]['LK']);
+					//unset($keys[$attachedModelName]['RK']);
+
+					//if (DEBUG_MODE) Message::addDebugMessage('messages', 'aLK = '.$attachedModelLK.', aRF = '.$attachedModelRK.', data = '.$row[$attachedModelLK]);
+
+					if (!in_array($row[$attachedModelLK], $keys[$attachedModelName])) array_push($keys[$attachedModelName], $row[$attachedModelLK]);
+				}
+
 				array_push($data[$tmpModelName], $row);
 			}
 
@@ -548,35 +577,79 @@ class Model {
 				// add target model row to project row
 				array_push($data[$relatedModelName][$tmpArr[$tmpId]][$targetModelName], $row);
 
+				foreach ($attachedModels as $attachedModelName) {
+					$attachedModelLK = $keys[$attachedModelName]['LK'];
+					$attachedModelRK = $keys[$attachedModelName]['RK'];
+					//unset($keys[$attachedModelName]['LK']);
+					//unset($keys[$attachedModelName]['RK']);
+
+					//if (DEBUG_MODE) Message::addDebugMessage('messages', 'aLK = '.$attachedModelLK.', aRF = '.$attachedModelRK.', data = '.$row[$attachedModelLK]);
+
+					if (!in_array($row[$attachedModelLK], $keys[$attachedModelName])) array_push($keys[$attachedModelName], $row[$attachedModelLK]);
+				}
+
+
 
 			} // while row
 
 		} // if relatedmodel
 
-    	if (DEBUG_MODE) Message::addDebugMessage('querydata', $data);
-    	if (DEBUG_MODE) Message::addDebugMessage('keys', $keys);
-
+    	//if (DEBUG_MODE) Message::addDebugMessage('querydata', $data);
+    	//if (DEBUG_MODE) Message::addDebugMessage('keys', $keys);
 
 		// if there were any tables listed in the attach query parameter, do separate queries for those
 		// and attach to results
 		if ( (!empty($this->globalParams['attach'])) ) {
-			foreach (explode(',',$this->globalParams['attach']) as $attachedModelName) {
+			foreach ($attachedModels as $attachedModelName) {
+				//break;
 				// define a bucket for the attached table
-				$data[$attachedModelName] = array();
+				//$data[$attachedModelName] = array();
 				// check the target model's relationship to the attached model to build query
 				// if the models aren't related, don't bother and bail
-				if (empty($targetModel->relationships[$attachedModelName])) break;
+				//if (empty($targetModel->relationships[$attachedModelName])) continue;
 
 				// get the attached model records based on target model PK using IN()
-				$keys[$attachedModelName] = array();
-				$attachedModelPK = $targetModel->relationships[$attachedModelName]['remoteKey'];
-				$attachedModelFK = $targetModel->relationships[$attachedModelName]['localKey'];
+				//$keys[$attachedModelName] = array();
+				//$attachedModelPK = $targetModel->relationships[$attachedModelName]['remoteKey'];
+				//$attachedModelFK = $targetModel->relationships[$attachedModelName]['localKey'];
 
-				// loop through target
-				foreach ($data[$targetModelName] as $row) {
+				/*
+				// set target data alias
+				$tmpTargetData = $relatedModel === NULL ? $data[$targetModelName] : $data[$relatedModelName][$targetModelName];
+				// loop through target data
+				foreach ($tmpTargetData as $row) {
 					if (!in_array($row[$attachedModelFK], $keys[$attachedModelName])) array_push($keys[$attachedModelName], $row[$attachedModelFK]);
 				}
-    	if (DEBUG_MODE) Message::addDebugMessage('keys', $keys);
+				*/
+
+				//if ($relatedModel === NULL) {
+				//	foreach ($data[$targetModelName] as $row) {
+				//		if (!in_array($row[$attachedModelFK], $keys[$attachedModelName])) array_push($keys[$attachedModelName], $row[$attachedModelFK]);
+				//	}
+				//
+				//} else {
+					/*
+					foreach ($data[$relatedModelName] as $tmpModel) {
+						foreach ($tmpModel as $row) {
+							//if (!in_array($row[$attachedModelFK], $keys[$attachedModelName])) array_push($keys[$attachedModelName], $row[$attachedModelFK]);
+
+						}
+					}
+					*/
+					//$tmpArr = array_flip($keys[$targetModelName]);
+				//	foreach ($keys[$targetModelName] as $tmpIndex => $tmpId) {
+				//		if (DEBUG_MODE) Message::addDebugMessage('message', 'tmpIndex = '.$tmpIndex.', tmpId = '.$tmpId.', '.$attachedModelFK.' = '.$data[$relatedModelName][$targetModelName][$tmpIndex][$attachedModelFK]);
+				//		array_push($keys[$attachedModelName], $data[$relatedModelName][$targetModelName][$tmpIndex][$attachedModelFK]);
+				//	}
+				//}
+
+				unset($keys[$attachedModelName]['LK']);
+				unset($keys[$attachedModelName]['RK']);
+
+
+    			//if (DEBUG_MODE) Message::addDebugMessage('keys', $keys);
+
+
 
 				$attachedModel = new $attachedModelName($this->db, array($attachedModelName => array('id' => $keys[$attachedModelName], 'requestPattern' => 'CI')));
 				
@@ -587,9 +660,9 @@ class Model {
 		} // if attached
 
     	//if (DEBUG_MODE) Message::addDebugMessage('fieldList', $this->getFieldList());
-    	if (DEBUG_MODE) Message::addDebugMessage('keys', $keys);
+    	//if (DEBUG_MODE) Message::addDebugMessage('keys', $keys);
     	//if (DEBUG_MODE) Message::addDebugMessage('queries', $queryList);
-    	if (DEBUG_MODE) Message::addDebugMessage('querydata', $data);
+    	//if (DEBUG_MODE) Message::addDebugMessage('querydata', $data);
 		return $data;
 
     } // get

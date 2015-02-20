@@ -3,6 +3,7 @@ API Bug Reports and Fixes
 
 Known Issues
 ------------
+
 Link table connections not working in multi-collection requests
 
 The attach query parameter currently doesn't support link table relationships
@@ -11,4 +12,10 @@ Model->get() parameter override not working. Busted implementation removed. Work
 
 Fixed Bugs
 ----------
+Join between target and related collection acts as related LEFT JOIN target in CC; should be INNER JOIN behavior
+Resolved 2015/02/20 - currently uses an inner join statement for first query to related table; this may not be the most efficient route later on, but it beats going through all projects 
+
+attach when making CIC or CC requests not working
+Resolved 2015/02/20 - attaches now work as expected. Note that the localKey MUST be included in the result set or the attach fails with a Status 400
+
 

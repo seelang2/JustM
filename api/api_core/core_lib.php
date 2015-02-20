@@ -275,7 +275,7 @@ class Message {
 		if ($serialize) {
 			// take the NET microtimestamp, convert to a string
 			//$tsKey = ''.(int)(microtime(true)*1000);
-			$tsKey = ''.((int)(microtime(true)*1000)-(int)($_SERVER['REQUEST_TIME_FLOAT']*1000));
+			$tsKey = ''.((microtime(true)*1000)-($_SERVER['REQUEST_TIME_FLOAT']*1000));
 			if (isset(Message::$debugMessages[$key])) {
 				Message::$debugMessages[$key][$tsKey] = $data;
 			} else {
