@@ -458,7 +458,7 @@ class Model {
 		$keys[$tmpModelName] = array();
 
 		// check and set attach query parameter data
-		if ( (!empty($this->globalParams['attach'])) ) {
+		if ( !empty($this->globalParams['attach']) ) {
 			$attachedModels = array(); // create empty bucket for valid attached models
 			foreach (explode(',',$this->globalParams['attach']) as $attachedModelName) {
 				// check the target model's relationship to the attached model to build query
@@ -599,7 +599,7 @@ class Model {
 
 		// if there were any tables listed in the attach query parameter, do separate queries for those
 		// and attach to results
-		if ( (!empty($this->globalParams['attach'])) ) {
+		if ( !empty($attachedModels) ) {
 			foreach ($attachedModels as $attachedModelName) {
 				//break;
 				// define a bucket for the attached table
