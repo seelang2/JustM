@@ -311,12 +311,16 @@ class Model {
     if ($this->parentModel !== NULL) {
       $parentModelName = $this->parentModel->getModelName();
 
+      if (DEBUG_MODE) Message::addDebugMessage('messages', 'parentModelName = '.$parentModelName);
+
       // check what kind of relationship this is and proceed accordingly
       if (DEBUG_MODE) Message::addDebugMessage('messages', $thisModelName.' '.$this->relationships[$parentModelName]['type'] .' '.$parentModelName);
 
       if ($this->relationships[$parentModelName]['type'] == 'has') {
         // A has B - PK in A, FK in B
         $key = $this->relationships[$parentModelName]['localKey'];
+
+        
       }
       if ($this->relationships[$parentModelName]['type'] == 'belongsTo') {
         // A belongsTo B - PK in B, FK in A
@@ -340,11 +344,12 @@ class Model {
       $localKey = $this->relationships[$parentModelName]['localKey']; // PARENT model PK
       $remoteKey = $this->relationships[$parentModelName]['remoteKey']; // PARENT model FK in bound model
       */
+    
+      if (isset($this->data['FKList'][$parentModelName])) array_unshift($fields, $this->tableName.'.'.$key." AS '".$parentModelName.".FK'");
     } // if parentModel
 
   	// add in the PK and FK fields for the models for aggregation purposes
   	array_unshift($fields, $this->tableName.'.'.$this->primaryKey.' AS PRI');
-    if (isset($this->data['FKList'][$parentModelName])) array_unshift($fields, $this->tableName.'.'.$key." AS '".$parentModelName.".FK'");
 
     // if type is count then just perform a count query with one field
     if (strtolower($options['type']) == 'count') {
@@ -472,7 +477,8 @@ class Model {
       if (DEBUG_MODE) Message::addDebugMessage($tmpModelName.'_getData', $tmpData);
 
       // now collate the data together
-      if ($tmpModelPointer->getOption('forceUnthreaded') === true) {
+
+      if ($tmpModelPointer->getOption('forceUnthreaded') == true) {
         // leave data unthreaded
         $this->data['resultSet'] = array_merge($this->data['resultSet'], $tmpData['resultSet']);
 
@@ -493,12 +499,33 @@ class Model {
         } 
         if ($relationshipType == 'belongsTo') {
           //$tmpArray = array_flip($this->data['PKList']); // invert PK list to search PKs in data
-          $tmpKeyList = $tmpData['FKList'][$tmpModelName];
+          //$tmpKeyList = $tmpData['FKList'][$tmpModelName];
+
+          $tmpArray = array_flip($this->data['PKList']); // invert PK list to search PKs in data
+          //$tmpArray = array_flip($keyList);
+
+          foreach ($tmpData['FKList'] as $tmpParentModelName => $tmpParentFKList) {
+            foreach ($tmpParentFKList as $tmpIndex => $tmpFK) {
+              //if (!isset($this->data['resultSet'][$thisModelName][$tmpArray[$tmpFK]][$tmpModelName]))
+              //    $this->data['resultSet'][$thisModelName][$tmpArray[$tmpFK]][$tmpModelName] = array();
+
+              if (DEBUG_MODE) Message::addDebugMessage('messages', 'Adding '.$tmpModelName.' element '.$tmpIndex.' to '.$thisModelName.' element '.$tmpArray[$tmpFK]);
+              //if (DEBUG_MODE) Message::addDebugMessage($tmpModelName.' element '.$tmpIndex, $tmpData['resultSet'][$tmpModelName][$tmpIndex]);
+              //if (DEBUG_MODE) Message::addDebugMessage($thisModelName.' element '.$tmpArray[$tmpFK], $this->data['resultSet'][$thisModelName][$tmpArray[$tmpFK]][$tmpModelName]);
+
+              array_push(
+                $this->data['resultSet'][$thisModelName][$tmpArray[$tmpFK]][$tmpModelName],
+                $tmpData['resultSet'][$tmpModelName][$tmpIndex]
+              );
+            }
+          }
+
         } 
         if ($relationshipType == 'HABTM') {
 
         } 
 
+        /*
         //$tmpArray = array_flip($this->data['PKList']); // invert PK list to search PKs in data
          $tmpArray = array_flip($keyList);
 
@@ -513,6 +540,7 @@ class Model {
             );
           }
         }
+        */
 
         // now passthrough any other attached data in resultset
         // remove already processed data set
