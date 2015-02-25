@@ -10,719 +10,615 @@
 
 /****
   The base Model class that all other models inherit from
-  Defines the base methods
+  Defines the base methods and scaffold functionality
  **/
 class Model {
 
-	protected $modelName = NULL;
-    public $parentModel = NULL;
-    public $subModel = NULL;
-    protected $fieldList = array();
-    protected $primaryKey = NULL;
-    protected $db = NULL;
+	protected $modelName = NULL;						// model (class) name
+  protected $db = NULL;								// pointer to database connection
+  protected $tableName = NULL;						// table name in db
+  protected $primaryKey = NULL;						// PK field
+  protected $fieldList = array();						// list of table fields
+  
+  protected $parentModel = NULL;						// pointer to model this model is bound to
+  protected $boundModels = array();					// list of models bound to this model
 
-    public $tableName = NULL;                       // table name in db
+  /****
+    The options array sets the default options used by the model
+    Valid options:
+    	alias 											Aliased model name (used in relationships)
+      forceUnthreaded             Flag to override threaded data join
+   **/
+  protected $options = array();						// option settings for model
+  
+  protected $eventQueue = array(						// container for event queues
+  	'beforeFind',									// triggered on find() before processing
+  	'afterFind', 									// triggered on find() after processing
+  	'beforeUpdate',
+  	'afterUpdate'
+  );
+  
+  /****
+    Models are related together by defining the relationship in an array in the called model.
+    The relationships get defined using the following structure:
+
+    A has B - PK in A, FK in B
+    A belongsTo B - PK in B, FK in A
+    A HABTM B - FK in link table
+
+    protected $relationships = array(
+      'alias' => array(                    // Alias to use for this table (use model name if no alias)
+          'model'     => 'modelClass',     // Name of the model (or model on other side of link table)
+          'type'      => 'relType',        // Type of relationship - has, belongsTo, HABTM
+          'localKey'  => 'KeyField',       // Local model PK ()
+          'remoteKey' => 'KeyField'        // PK or FK field name in related model (or local model's FK in link table)
+          'linkTable' => 'linkTableName'   // Name of link table to use
+      )
+    );
+
+   **/
+  protected $relationships = array();					// array of table relationships
+
+  protected $data = NULL;								// data being manipulated
+
+  /****
+    a reference to the database connection object is passed to the constructor and stored locally
+    as dependency injection, as are the request parameters.
+
+    Takes the parsed request parameters and instantiates the models required by the request. 
+    Request parameters are stored in each model in the chain. These options can be changed or 
+    overridden by method calls.
+   **/
+  function __construct(&$db, $options = array(), &$parentModel = NULL) {
+    $this->db = $db;
+    $this->modelName = strtolower(get_class($this));
+    $this->parentModel = $parentModel;
+    $this->options = $options;
+
+    if (DEBUG_MODE) Message::addDebugMessage('modelOptions', $options);
+
+    // load field list from cache file
+    if (empty($this->fieldList)) {
+      $this->loadFieldList();
+    }
+
+    // find and set primary key
+    foreach($this->fieldList as $field) {
+      if ($field['Key'] == 'PRI') {
+          $this->primaryKey = $field['Field'];
+          break;
+      }
+    }
     
-    /****
-		List of possible request params
-		model
-		id
-		requestPattern
-		fields
+  } // __construct
 
-     **/
-    protected $requestParams = array();				// Request parameter array for this model
-    
-    /****
-        The relationships get defined using the following structure:
+  /****
+    Test method.
+   **/
+  public function test($params = array()) {
+  	// override request params with passed params (if any)
+  	$requestParams = array_merge($this->requestParams, $params);
 
-	    protected $relationships = array(
-	    	//'relation' => array(						// 'has', 'belongsTo', 'HABTM'
-		        'alias' => array(                       // Alias to use for this table (use model name if no alias)
-		            'model'     => 'modelClass',        // Name of the model (or model on other side of link table)
-		            'localKey'  => 'foreignKeyField',   // Foreign key field name for local model
-		            'remoteKey' => 'remoteForeignKey'   // The foreign key field name for the related model
-		            'linkTable' => 'linkTableName'      // Name of link table to use
-		        )
-	        //)
-	    );
+  	return array((int)microtime(true), 'Test Method called on model '.get_class($this).'.');
+  } // test
 
-     **/
-    protected $relationships = array();				// holds array of table relationships
 
-    /****
-      a reference to the database connection object is passed to the constructor and stored locally
-      as dependency injection, as are the request parameters.
+  /****
+    Returns model name or alias if set
+   **/
+  public function getModelName() {
+    return empty($this->options['alias']) ? $this->modelName : $this->options['alias'];
+  } // getModelName
 
-      Takes the parsed request parameters and instantiates the models required by the request. 
-      Request parameters are stored in each model in the chain. These options can be changed or 
-      overridden by method calls.
-     **/
-    function __construct(&$db, $requestParams = NULL, $globalParams = NULL, &$parentModel = NULL) {
-        $this->parentModel = $parentModel;
-        $this->db = $db;
-        $this->modelName = strtolower(get_class($this));
-        $this->globalParams = $globalParams;
+  /****
+    Finds the root of a chain of connected models
+   **/
+  public function getRootModel() {
+    $rootModel = $this;
+    while ($rootModel->parentModel != NULL) {
+        $rootModel = $rootModel->parentModel;
+    }
 
-        if (empty($this->fieldList)) {
-            $this->loadFieldList();
+    return $rootModel;
+  } // getRootModel
+
+  /****
+    Finds a model in a chain of connected models
+   **/
+  public function getModel($modelName) {
+
+  } // getModel
+
+  /****
+    Loads model table field names array from cache file or creates cache file if it doesn't exist
+    Produces an array where each field has the following keys:
+
+	{
+		"Field": "id",
+		"Type": "int(10) unsigned",
+		"Null": "NO",
+		"Key": "PRI",
+		"Default": null,
+		"Extra": "auto_increment"
+	}
+
+  **/
+  protected function loadFieldList() {
+    if (file_exists(CACHE_DIR.DS.strtolower(get_class($this)).'.dat')) {
+      $this->fieldList = loadData(CACHE_DIR.DS.strtolower(get_class($this)).'.dat');
+      return;
+    }
+
+    $results = $this->db->query('DESCRIBE '.$this->tableName);
+    $this->fieldList = $results->fetchAll(PDO::FETCH_ASSOC);
+    saveData($this->fieldList, CACHE_DIR.DS.strtolower(get_class($this)).'.dat');
+
+  } // loadFieldList
+
+  /****
+    Returns dump of fieldList array.
+   **/
+  public function getFieldList() {
+    if (empty($this->fieldList)) return false;
+
+    return $this->fieldList;
+
+  } // getFieldList
+
+  /****
+    Returns PK for this model's table
+   **/
+  public function getPrimaryKey() {
+
+    return $this->primaryKey;
+
+  } // getPrimaryKey
+
+  /****
+    Returns data variable value
+   **/
+  public function getData() {
+
+    return $this->Data;
+
+  } // getData
+
+  /****
+    Sets model options
+   **/
+  public function setOptions($options) {
+
+    $this->options = array_merge($this->options, $options);
+
+  } // setOptions
+
+  /****
+    Get a single option parameter or NULL if it doesn't exist
+    (Options shouldn't have a NULL value; they should instead simply not exist)
+   **/
+  public function getOption($option) {
+
+    if (!isset($this->options[$option])) return NULL;
+    return $this->options[$option];
+
+  } // getOption
+
+  /****
+    Sanitize data for use in SQL query
+   **/
+  public function sanitize($data = NULL) {
+    if (empty($data)) return false;
+    return $this->db->quote($data);
+  } // sanitize
+
+  /****
+    Binds a model to the current model and returns a reference to the new model
+   **/
+  public function bind($modelName, $options = array()) {
+  	// allow an alias to be passed as the name of the model
+  	$alias = empty($options['alias']) ? $modelName : $options['alias'];
+  	// create new model instance and attach as new public member
+  	$this->{$alias} = new $modelName($this->db, $options, $this);
+  	// add model to list of bound models
+  	$this->boundModels[$alias] = &$this->{$alias};
+    return $this->{$alias};
+  } // bind
+
+  /****
+    Registers an event listener to a queue 
+    The callback will be passed two parameters as defined below: 
+    	function callback(mixed $data, array $options)
+   **/
+  public function register($eventName, $callback, $options = array()) {
+  	if (!isset($this->eventQueue[$eventName])) $this->eventQueue[$eventName] = array();
+  	array_push($this->eventQueue[$eventName], array($callback, $options));
+  } // register
+
+  /****
+    Executes the callbacks in an event queue, optionally passing data to each
+   **/
+  public function trigger($eventName, $data = NULL) {
+  	if (!isset($this->eventQueue[$eventName])) return false;
+  	foreach ($this->eventQueue[$eventName] as $callbackArray) {
+  		call_user_func($callbackArray[0], $data, $callbackArray[1]);
+  	}
+  } // trigger
+
+  /****
+    Retrieves resource data.
+    Options:
+    	type              What kind of search to perform: 'one','all' ,'count', 'threaded'
+    	id                PK to return. May be single value or array of values
+  		fields            Array of fields to return. Returns all fields by default
+  		limit             Array containing limit parameters - [0] = offset, [1] = range
+  		relatedId         FK from related (bound) model. May be single value or array of values
+  		relatedFields     Fields in bound models to return
+  
+    Returns an array containing the following:
+      resultSet         The fields specified (or all fields) to be retrieved
+      PKList            Array of PKs in result set
+      status            Result code of operation. Directly maps to HTTP status codes
+      message           Additional information regarding status
+  
+   **/
+  public function find($options = array()) {
+  	$this->trigger('beforeFind');
+
+    $thisModelName = $this->getModelName(); // quit looking up the model name all the time
+
+    // override default options with passed-in options
+    $options = array_merge($this->options, $options);
+
+    if (DEBUG_MODE) Message::addDebugMessage('findOptions', $options);
+
+    // initialize data structure
+    $this->data = array(
+      'status'      => NULL,
+      'PKList'      => array(),
+      'resultSet'   => array($thisModelName => array())
+    );
+
+    $useFKList = false; // set initial value to false
+
+    if (empty($options['type'])) $options['type'] = 'threaded';
+  	$fields = array();
+
+    // if this is a bound model OR if there are models bound to this one, we need to check out
+    // the relationship between the models
+    if (!empty($this->boundModels)) {
+      // check to see if any of the bound models require the parent's FK field
+      // (a 'has' relationship in the bound model)
+      foreach ($this->boundModels as $tmpModelName => $tmpModelPointer) {
+        $relationshipType = $tmpModelPointer->relationships[$thisModelName]['type'];
+        if (DEBUG_MODE) Message::addDebugMessage('messages', $tmpModelName.' bound to '.$thisModelName.' using '.$relationshipType);
+        if ($relationshipType == 'has') {
+          // create a bucket to hold the FKs for this bound model
+          if (!isset($this->data['FKList'])) $this->data['FKList'] = array();
+          $this->data['FKList'][$tmpModelName] = array();
+
+          // in 'A has B' the FK is in B
+          //$FKey = $tmpModelPointer->relationships[$thisModelName]['localKey'];
+          array_unshift($fields, $this->tableName.'.'.$tmpModelPointer->relationships[$thisModelName]['remoteKey']." AS '".$tmpModelName.".FK'");
         }
+      }
+    }
 
-        // find primary key
-        foreach($this->fieldList as $field) {
-            if ($field['Key'] == 'PRI') {
-                $this->primaryKey = $field['Field'];
-                break;
-            }
+    //if ($this->parentModel !== NULL) $useFKList = true;
+
+    // if (DEBUG_MODE) Message::addDebugMessage($this->getModelName().'boundModels', $this->boundModels);
+
+    // if this is a bound model, get the relationship info about the parent
+    if ($this->parentModel !== NULL) {
+      $parentModelName = $this->parentModel->getModelName();
+
+      // check what kind of relationship this is and proceed accordingly
+      if (DEBUG_MODE) Message::addDebugMessage('messages', $thisModelName.' '.$this->relationships[$parentModelName]['type'] .' '.$parentModelName);
+
+      if ($this->relationships[$parentModelName]['type'] == 'has') {
+        // A has B - PK in A, FK in B
+        $key = $this->relationships[$parentModelName]['localKey'];
+      }
+      if ($this->relationships[$parentModelName]['type'] == 'belongsTo') {
+        // A belongsTo B - PK in B, FK in A
+        // create a bucket to hold the FKs for this bound model
+        if (!isset($this->data['FKList'])) $this->data['FKList'] = array();
+        $this->data['FKList'][$parentModelName] = array();
+        $key = $this->relationships[$parentModelName]['localKey'];
+      }
+      if ($this->relationships[$parentModelName]['type'] == 'HABTM') {
+        // A HABTM B - FK in link table
+      }
+
+      /*
+      $this->data['FKList'] = array();
+      $parentModelName = $this->parentModel->getModelName();
+
+      if (!empty($this->relationships[$parentModelName]['linkTable'])) {
+        $relatedTable = $this->relationships[$parentModelName]['linkTable'];
+      }
+
+      $localKey = $this->relationships[$parentModelName]['localKey']; // PARENT model PK
+      $remoteKey = $this->relationships[$parentModelName]['remoteKey']; // PARENT model FK in bound model
+      */
+    } // if parentModel
+
+  	// add in the PK and FK fields for the models for aggregation purposes
+  	array_unshift($fields, $this->tableName.'.'.$this->primaryKey.' AS PRI');
+    if (isset($this->data['FKList'][$parentModelName])) array_unshift($fields, $this->tableName.'.'.$key." AS '".$parentModelName.".FK'");
+
+    // if type is count then just perform a count query with one field
+    if (strtolower($options['type']) == 'count') {
+      array_push($fields, "COUNT(*) AS count");
+  	} else {
+      // if the fields have been passed use them 
+      if (!empty($options['fields'])) {
+        foreach ($options['fields'] as $tmpField) {
+          array_push($fields, "`".$this->tableName."`".'.'."`".$tmpField."`");
         }
+  		} else {
+  			// ...otherwise get all fields
+  			foreach ($this->getFieldList() as $field) {
+  				array_push($fields, "`".$this->tableName."`".'.'."`".$field['Field']."`");
+  			}
+  		}
+  	}
+
+  	// check for limit query parameter and validate before using
+  	// there may be a faster way to do this
+  	if (!empty($options['limit'])) {
+  		//$limit = explode(',',$options['limit']);
+      $limit = $options['limit'];
+  		// validate each limit parameter
+  		foreach($limit as $tmpParam) {
+  			if (!is_numeric($tmpParam)) {
+  				$limit = NULL; // just invalidate the entire limit param
+  				break; // terminate validation
+  			}
+  		}
+  	}
+
+  	// begin building query
+    $query = 'SELECT DISTINCT '. join(',',$fields) . ' FROM `'. $this->tableName .'`';
+
+    // add id if passed
+    if (isset($options['id'])) {
+      $id = $options['id'];
+      if (!is_array($id)) $id = $this->sanitize($id);
+      
+      if (is_array($id)) {
+        $id = array_keys(array_flip($id)); // make id array unique
+        $query .= " WHERE {$this->primaryKey} IN(".join(',', $id).")";
+      } else {
+        $query .= " WHERE {$this->primaryKey} = {$id}";
+      }      
+    }
+
+    if ($this->parentModel !== NULL) {
+      // add id if passed
+      if (isset($options['relatedId'])) {
+        $id = $options['relatedId'];
+        if (!is_array($id)) $id = $this->sanitize($id);
         
-        // attach request parameters to model
-        if (empty($requestParams)) {
-        	$this->requestParams = array(
-        		'model' 			=> $this->modelName,
-        		'requestPattern' 	=> 'C',
-        	);
+        if (is_array($id)) {
+          $id = array_keys(array_flip($id)); // make id array unique
+          $query .= " WHERE {$key} IN(".join(',', $id).")";
         } else {
-	        $this->requestParams = array_shift($requestParams);        	
-        }
-
-        // if there's more in the requestParams array, instantiate the next model and attach
-        if (!empty($requestParams)) {
-        	$subModelName = array_shift(array_keys($requestParams));
-        	$this->subModel = new $subModelName($db, $requestParams, $globalParams, $this);
-        }
-
-
-
-    } // __construct
-
-    /****
-      Test method.
-     **/
-    public function test($params = array()) {
-    	// override request params with passed params (if any)
-    	$requestParams = array_merge($this->requestParams, $params);
-
-    	return array((int)microtime(true), 'Test Method called on model '.get_class($this).'.');
-    } // test
-
-    /****
-      Returns the request parameters array for this model (if any)
-     **/
-    public function getRequestParams() {
-    	return $this->requestParams;
-    } // getRequestParams
-
-    /****
-      Returns the request parameters array for the entire chain
-      returns as both associative and numeric indexed array for convenience
-     **/
-    public function getRequestParamsChain() {
-    	$requestParams = array();
-    	//$c = 0;
-
-    	$rootModel = $this->getRootModel();
-    	$requestParams[strtolower(get_class($rootModel))] = $rootModel->requestParams;
-     	//$requestParams[$c++] = $rootModel->requestParams;
-   	
-    	while ($rootModel->subModel != NULL) {
-    		$rootModel = $rootModel->subModel;
-    		$requestParams[strtolower(get_class($rootModel))] = $rootModel->requestParams;
-    		//$requestParams[$c++] = $rootModel->requestParams;
-    	}
-
-    	return $requestParams;
-    } // getRequestParams
-
-    /****
-      Finds the root of a chain of connected models
-     **/
-    public function getRootModel() {
-        $rootModel = $this;
-        while ($rootModel->parentModel != NULL) {
-            $rootModel = $rootModel->parentModel;
-        }
-
-        return $rootModel;
+          $query .= " WHERE {$key} = {$id}";
+        }      
+      }
     }
 
-    /****
-      Returns a specified model from the array of attached models
-      Remember, only up to two models connected in any request is supported
-     **/
-    protected function getModel($modelName) {
-        if (strtolower($this->modelName) == strtolower($modelName)) return $this;
-        if ($this->parentModel != NULL && strtolower($this->parentModel->modelName) == strtolower($modelName)) return $this->parentModel;
-        if ($this->subModel != NULL && strtolower($this->subModel->modelName) == strtolower($modelName)) return $this->subModel;
+    // apply limit
+    if (!empty($limit)) { 
+      $query .= ' LIMIT '.join(',', $limit);
     }
 
-    /****
-      Looks up model given an alias (or returns entire list if no alias given)
-     **/
-    public function findModelAlias($params = NULL) {
-        if (count($params) > 1) {
-            throw new Exception("Incorrect number of parameters for ".get_class($this)."->getOne");
-        }
+    if (DEBUG_MODE) Message::addDebugMessage('queries', $query); // debug messages are now serialized
 
-        if (empty($params)) return $this->relatedModels;
+    // query built, now send to server
+    $results = $this->db->query($query);
 
-        foreach($this->relatedModels as $model => $aliasList) {
-            if (in_array($params[0], $aliasList)) return $model;
-        }
+    // if there's a query error terminate with error status
+    if ($results == false) {
+      return array(
+        'status'      => 400,
+        'message'     => 'Query error. Please check request parameters.'
+      );
     }
 
-    /****
-      Loads model table field names array from cache file or creates cache file if it doesn't exist
-      Produces an array where each field has the following keys:
+    // if the result set is empty terminate with error status
+    if ($this->db->query("SELECT FOUND_ROWS()")->fetchColumn() == 0) {
+      return array(
+        'status'      => 404,
+        'message'     => 'No results matching your request were found.'
+      );
+    }
+
+    // make short alias to resultSet
+    $resultSet = &$this->data['resultSet'][$thisModelName];
+
+    // loop through result set and parse
+    while ($row = $results->fetch(PDO::FETCH_ASSOC)) {
+      // extract PK and add to key list
+      array_push($this->data['PKList'], $row['PRI']);
+      unset($row['PRI']); // for internal use - only return requested fields
+      
+      // go through FKList 
+      if (isset($this->data['FKList'])) {
+        foreach ($this->data['FKList'] as $tmpModelName => $tmpArray) {
+          array_push($this->data['FKList'][$tmpModelName], $row[$tmpModelName.'.FK']);
+          unset($row[$tmpModelName.'.FK']); // for internal use - only return requested fields        
+        }
+      }
+
+      array_push($resultSet, $row);
+
+    } // while row
+
+    // if there are models bound to this one, get their data as well
+    if (DEBUG_MODE) Message::addDebugMessage($thisModelName.'boundModels', $this->boundModels);
+
+    foreach ($this->boundModels as $tmpModelName => $tmpModelPointer) {
+      $relationshipType = $tmpModelPointer->relationships[$thisModelName]['type'];
+      
+      if (DEBUG_MODE) Message::addDebugMessage('messages', $thisModelName.' now processing '.$tmpModelName.' using '.$relationshipType);
+
+      $keyList = $relationshipType == 'has' ? $this->data['FKList'][$tmpModelName] : $this->data['PKList'];
+
+      $tmpData = $this->{$tmpModelName}->get(array(
+        'relatedId'    => $keyList
+      ));
+      
+      if (DEBUG_MODE) Message::addDebugMessage($tmpModelName.'_getData', $tmpData);
+
+      // now collate the data together
+      if ($tmpModelPointer->getOption('forceUnthreaded') === true) {
+        // leave data unthreaded
+        $this->data['resultSet'] = array_merge($this->data['resultSet'], $tmpData['resultSet']);
+
+        // remove already processed data set
+        unset($tmpData['resultSet'][$tmpModelName]); 
+
+      } else if ($options['type'] == 'threaded') {
+        // thread the bound model with the parent model data
+        
+        foreach($this->data['resultSet'][$thisModelName] as $tmpIndex => $row) {
+          //$row[$tmpModelName] = array();
+          $this->data['resultSet'][$thisModelName][$tmpIndex][$tmpModelName] = array();
+        }
+
+        if ($relationshipType == 'has') {
+          $tmpKeyList = $tmpData['PKList'];
+
+        } 
+        if ($relationshipType == 'belongsTo') {
+          //$tmpArray = array_flip($this->data['PKList']); // invert PK list to search PKs in data
+          $tmpKeyList = $tmpData['FKList'][$tmpModelName];
+        } 
+        if ($relationshipType == 'HABTM') {
+
+        } 
+
+        //$tmpArray = array_flip($this->data['PKList']); // invert PK list to search PKs in data
+         $tmpArray = array_flip($keyList);
+
+        foreach ($tmpKeyList as $tmpParentModelName => $tmpParentFKList) {
+          foreach ($tmpParentFKList as $tmpIndex => $tmpFK) {
+            //if (!isset($this->data['resultSet'][$thisModelName][$tmpArray[$tmpFK]][$tmpModelName]))
+            //    $this->data['resultSet'][$thisModelName][$tmpArray[$tmpFK]][$tmpModelName] = array();
+            
+            array_push(
+              $this->data['resultSet'][$thisModelName][$tmpArray[$tmpFK]][$tmpModelName],
+              $tmpData['resultSet'][$tmpModelName][$tmpIndex]
+            );
+          }
+        }
+
+        // now passthrough any other attached data in resultset
+        // remove already processed data set
+        unset($tmpData['resultSet'][$tmpModelName]); 
+        // now merge remaining data
+        $this->data['resultSet'] = array_merge($this->data['resultSet'], $tmpData['resultSet']);
+
+      } else {
+        // leave data unthreaded
+        //$this->data['resultSet'][$tmpModelName] = $tmpData['resultSet'][$tmpModelName];
+        $this->data['resultSet'] = array_merge($this->data['resultSet'], $tmpData['resultSet']);
+        
+        // remove already processed data set
+        unset($tmpData['resultSet'][$tmpModelName]); 
+      }
+
+
+
+    } // foreach boundModel
+
+
+    // set Ok status
+    $this->data['status'] = 200;
+
+    // the 'afterFind' event provides a hook to manipulate the data before return
+  	$this->trigger('afterFind', $this->data);
+
+  	return $this->data;
+  } // find
+
+
+
+
+ /****
+   REST API methods
+   ----------------
+   The following methods correspond to the HTTP methods supported by the API.
+   Each of these methods should set a proper HTTP 1.1 status code as part of the response.
+   See http://tools.ietf.org/html/rfc7231
+  **/
+
+  /****
+    GET - Retrieve either a resource collection or an individual resource if a key is given
+
+    get() can also be passed an array that overrides the request params, which is useful when 
+    creating separate unbound instances of a model. 
+
+    Also, the 'id' element can be an array of values, which will then cause the query to use 
+    'WHERE id IN(...)' referencing the array of ids.
+
+    Status Codes 		Condition
+    200 OK 			Successful request
+    404 Not Found 	When query returns an empty set
+    400 Bad Request 	Improper parameters sent or query error
+
+   **/
+  public function get($options = array()) {
+    return $this->find($options);
+  } // get
+
+  /****
+    HEAD - Retrieve either a resource collection or an individual resource if a key is given
+    without the representation data (schema and headers/links only)
+
+    Status Codes 		Condition
+    200 OK 			Successful request
+
+   **/
+  public function head($options = array()) {
+
+  	return array((int)microtime(true), 'HEAD Method called.');
+  } // head
+
+  /****
+    POST - Create a new resource in a given collection with complete data
+   **/
+  public function post($options = array()) {
+
+  	return array((int)microtime(true), 'POST Method called.');
+  } // post
+
+  /****
+    PUT - Update (replace) a resource in a collection with a given id with complete data
+   **/
+  public function put($options = array()) {
+
+  	return array((int)microtime(true), 'PUT Method called.');
+  } // put
+
+  /****
+    PATCH - Update a resource in a collection with a given id with partial data
+   **/
+  public function patch($options = array()) {
+
+  	return array((int)microtime(true), 'PATCH Method called.');
+  } // patch
+
+  /****
+    DELETE - Delete a resource in a collection with a given id
+   **/
+  public function delete($options = array()) {
+
+  	return array((int)microtime(true), 'DELETE Method called.');
+  } // delete
+
  
-		{
-			"Field": "id",
-			"Type": "int(10) unsigned",
-			"Null": "NO",
-			"Key": "PRI",
-			"Default": null,
-			"Extra": "auto_increment"
-		}
-
-    **/
-    protected function loadFieldList() {
-        if (file_exists(CACHE_DIR.DS.strtolower(get_class($this)).'.dat')) {
-            $this->fieldList = loadData(CACHE_DIR.DS.strtolower(get_class($this)).'.dat');
-            return;
-        }
-
-        $results = $this->db->query('DESCRIBE '.$this->tableName);
-        $this->fieldList = $results->fetchAll(PDO::FETCH_ASSOC);
-        saveData($this->fieldList, CACHE_DIR.DS.strtolower(get_class($this)).'.dat');
-
-    } // loadFieldList
-
-    /****
-      Returns dump of fieldList array.
-     **/
-    public function getFieldList() {
-        if (empty($this->fieldList)) return false;
-
-        return $this->fieldList;
-
-    } // getFieldList
-
-    /****
-      Returns PK for this model's table
-     **/
-    public function getPrimaryKey() {
-
-        return $this->primaryKey;
-
-    } // getPrimaryKey
-
-    /****
-      -
-     **/
-    public function count($params = NULL) {
-
-    } // count
-
-    /****
-      Sanitize data for use in SQL query
-     **/
-    public function sanitize($data = NULL) {
-    	if (empty($data)) return false;
-    	return $this->db->quote($data);
-    } // sanitize
-
-
-
-   /****
-     REST API methods
-     ----------------
-     The following methods correspond to the HTTP methods supported by the API.
-     Each of these methods should set a proper HTTP 1.1 status code as part of the response.
-     See http://tools.ietf.org/html/rfc7231
-    **/
-
-    /****
-      GET - Retrieve either a resource collection or an individual resource if a key is given
-
-      get() can also be passed an array that overrides the request params, which is useful when 
-      creating separate unbound instances of a model. 
-
-      Also, the 'id' element can be an array of values, which will then cause the query to use 
-      'WHERE id IN(...)' referencing the array of ids.
-
-      Status Codes 		Condition
-      200 OK 			Successful request
-      404 Not Found 	When query returns an empty set
-      400 Bad Request 	Improper parameters sent or query error
-
-     **/
-    public function get($params = NULL) {
-    	//if (DEBUG_MODE) Message::addDebugMessage('Model-get', 'called on model '.$this->modelName);
-    	//$queryList = array();
-
-     	// override request params with passed params (if any)
-	   	//if ($params === NULL) {
-	    	$requestParams = $this->getRequestParamsChain();
-    	//} else {
-    	//	$requestParams[strtolower(get_class($this))] = array_merge($this->requestParams, $params);
-    	//	if (!empty($params['id'])) $requestParams[strtolower(get_class($this))]['requestPattern'] = 'CI';
-    	//}
-
-    	//if (DEBUG_MODE) Message::addDebugMessage('requestParams', $requestParams);
-
-    	// get list of collections from request and get request pattern
-    	// also get any explicitly defined fields for each model
-    	$models = array();
-    	$requestPattern = NULL;
-    	$fields = array();
-
-    	foreach ($requestParams as $tmpModelName => $tmpParam) {
-    		array_push($models, $tmpModelName);
-    		$tmpTableName = $this->getModel($tmpModelName)->tableName;
-    		$requestPattern = $tmpParam['requestPattern'];
-			$fields[$tmpModelName] = array();
-    		if (!empty($tmpParam['fields'])) {
-    			foreach ($tmpParam['fields'] as $tmpField) {
-    				//array_push($fields, $tmpTableName.'.'.$tmpField.' AS '."'".$tmpTableName.'.'.$tmpField."'");
-    				array_push($fields[$tmpModelName], "`".$tmpTableName."`".'.'."`".$tmpField."`");
-    			}
-    		}
-    	}
-    	reset($requestParams); // reset pointer back to beginning of array
-
-    	// determine the target and related models based on the request pattern
-    	switch(true) {
-    		case $requestPattern == 'C' || $requestPattern == 'CI':
-    			$targetModelName = $models[0];
-    			$targetModel = $this->getModel($targetModelName);
-    			$targetTable = $targetModel->tableName;
-    			$relatedModelName = NULL;
-    			$relatedModel = NULL;
-    			$relatedTable = NULL;
-    		break;
-
-    		case $requestPattern == 'CIC' || $requestPattern == 'CC':
-    			$targetModelName = $models[1];
-      			$targetModel = $this->getModel($targetModelName);
-	   			$targetTable = $targetModel->tableName;
-	   			$relatedModelName = $models[0];
-    			$relatedModel = $this->getModel($relatedModelName);
-    			$relatedTable = $this->getModel($relatedModelName)->tableName;
-    		break;
-    	}
-
-    	// add in the primary keys for the models for aggregation purposes
-    	array_unshift($fields[$targetModelName], $targetTable.'.'.$targetModel->primaryKey.' AS PRI');
-    	if ($relatedModelName != NULL) array_unshift($fields[$relatedModelName], $relatedTable.'.'.$relatedModel->primaryKey.' AS PRI');
-
-    	// if the target model doesn't have a field list defined, get all fields
-		if (empty($requestParams[$targetModelName]['fields'])) {
-			foreach ($targetModel->getFieldList() as $field) {
-				//array_push($fields, $targetTable.'.'.$field['Field'].' AS '."'".$targetTable.'.'.$field['Field']."'");
-				array_push($fields[$targetModelName], "`".$targetTable."`".'.'."`".$field['Field']."`");
-			}
-		}
-
-		//if (DEBUG_MODE) Message::addDebugMessage('fieldsArray', $fields);
-
-    	// the join will be done manually, so we need to split this into multiple queries
-    	// the first query will either be for the related model if any or just the target model
-    	// so we use an alias for the first query model info
-    	if ($relatedModel === NULL) {
-    		$tmpModelName = $targetModelName;
-    		$tmpModel = $targetModel;
-    		$tmpTable = $targetTable;
-    	} else {
-    		$tmpModelName = $relatedModelName;
-    		$tmpModel = $relatedModel;
-    		$tmpTable = $relatedTable;
-    	}
-
-		// begin building query
-    	$query = 'SELECT DISTINCT '. join(',',$fields[$tmpModelName]);
-
-		switch($requestPattern) {
-			case 'C':
-				$query .= " FROM {$targetTable}";
-			break;
-			
-			case 'CI':
-				$id = $requestParams[$targetModelName]['id'];
-				if (!is_array($id)) $id = $this->sanitize($id);
-				
-				if (is_array($id)) {
-					$query .= " FROM {$targetTable} WHERE id IN(".join(',', $id).")";
-				} else {
-					$query .= " FROM {$targetTable} WHERE id = {$id}";
-				}
-			break;
-			
-			case 'CIC':
-				$id = $requestParams[$relatedModelName]['id'];
-				if (!is_array($id)) $id = $this->sanitize($id);
-				
-				// check the target model's relationship to the related model
-				if (!empty($this->getModel($targetModelName)->relationships[$relatedModelName]['linkTable'])) {
-					$relatedTable = $this->getModel($targetModelName)->relationships[$relatedModelName]['linkTable'];
-				}
-
-				$localKey = $this->getModel($targetModelName)->relationships[$relatedModelName]['localKey'];
-				$remoteKey = $this->getModel($targetModelName)->relationships[$relatedModelName]['remoteKey'];
-				
-				//$query .= " FROM {$targetTable} INNER JOIN {$relatedTable} ON {$targetTable}.{$localKey} = {$relatedTable}.{$remoteKey} WHERE {$targetTable}.{$localKey} = {$id}";
-				// using join decomposition so only perform the first query
-				//$query .= " FROM {$relatedTable} WHERE id = {$id}";
-				if (is_array($id)) {
-					$query .= " FROM {$relatedTable} WHERE id IN(".join(',', $id).")";
-				} else {
-					$query .= " FROM {$relatedTable} WHERE id = {$id}";
-				}
-			break;
-			
-			case 'CC':
-				// check the target model's relationship to the related model
-				if (!empty($this->getModel($targetModelName)->relationships[$relatedModelName]['linkTable'])) {
-					$relatedTable = $this->getModel($targetModelName)->relationships[$relatedModelName]['linkTable'];
-				}
-
-				$localKey = $this->getModel($targetModelName)->relationships[$relatedModelName]['localKey'];
-				$remoteKey = $this->getModel($targetModelName)->relationships[$relatedModelName]['remoteKey'];
-				
-				//$query .= " FROM {$targetTable} INNER JOIN {$relatedTable} ON {$targetTable}.{$localKey} = {$relatedTable}.{$remoteKey}";
-				// using join decomposition so only perform the first query
-				//$query .= " FROM {$relatedTable}";
-				$query .= " FROM {$relatedTable} INNER JOIN {$targetTable} ON {$targetTable}.{$localKey} = {$relatedTable}.{$remoteKey}";
-			break;
-		} // switch
-
-		// check for limit query parameter and validate before using
-		// there may be a faster way to do this
-		if (!empty($this->globalParams['limit'])) {
-			$limit = explode(',',$this->globalParams['limit']);
-			// validate each limit parameter
-			foreach($limit as $tmpParam) {
-				if (!is_numeric($tmpParam)) {
-					$limit = NULL; // just invalidate the entire limit param
-					break; // terminate validation
-				}
-			}
-		}
-		
-		// we want the limit to apply to the actual target model and not any related model
-		// so for first query only apply limit if there is no related model
-		if ( $relatedModel === NULL && (!empty($limit)) ) { 
-			$query .= ' LIMIT '.join(',', $limit);
-		}
-
-		if (DEBUG_MODE) Message::addDebugMessage('queries', $query); // debug messages are now serialized
-		//array_push($queryList, $query); // append query to query log
-
-		// query built, now send to server
-		$results = $this->db->query($query);
-
-		// if there's a query error terminate with error status
-		if ($results == false) {
- 		   	//if (DEBUG_MODE) Message::addDebugMessage('queries', $query);
-    		//if (DEBUG_MODE) Message::addDebugMessage('keys', $keys);
-			Message::stopError(400,'Query error. Please check request parameters.');
-		}
-
-		// if the result set is empty terminate with error status
-		if ($this->db->query("SELECT FOUND_ROWS()")->fetchColumn() == 0) {
- 		   	//if (DEBUG_MODE) Message::addDebugMessage('queries', $query);
-  		  	//if (DEBUG_MODE) Message::addDebugMessage('keys', $keys);
-			Message::stopError(404,'No results matching your request were found.');
-		}
-
-		// parse data into more useful structure
-		/*
-			{
-				collection: [
-					{
-						...
-						subcollection: [
-							{ }...
-						]
-					}
-				]
-			}
-
-			the bigger question is how to get this to sort properly. The easiest way to do this would
-			be to use join decomposition - break the query into multiple simplified queries and then 
-			perform the join in the application logic. Can be more efficient as the database gets larger.
-		*/
-
-		$data = array();
-		$data[$tmpModelName] = array();
-		$keys = array();
-		$keys[$tmpModelName] = array();
-
-		// check and set attach query parameter data
-		if ( !empty($this->globalParams['attach']) ) {
-			$attachedModels = array(); // create empty bucket for valid attached models
-			foreach (explode(',',$this->globalParams['attach']) as $attachedModelName) {
-				// check the target model's relationship to the attached model to build query
-				// if the models aren't related, don't bother and bail to next attached model
-				if (empty($targetModel->relationships[$attachedModelName])) continue;
-				array_push($attachedModels, $attachedModelName); // add to list of valid attached models
-				// define a bucket for the attached table
-				$data[$attachedModelName] = array();
-
-				// get the attached model records based on target model PK using IN()
-				$keys[$attachedModelName] = array();
-				$keys[$attachedModelName]['RK'] = $targetModel->relationships[$attachedModelName]['remoteKey'];
-				$keys[$attachedModelName]['LK'] = $targetModel->relationships[$attachedModelName]['localKey'];
-			} // foreach
-		}
-
-		// loop through result set and parse
-		while ($row = $results->fetch(PDO::FETCH_ASSOC)) {
-			// extract PK and add to key list
-			array_push($keys[$tmpModelName], $row['PRI']);
-			$tmpId = $row['PRI'];
-			unset($row['PRI']); // for internal use - only return requested fields
-
-			// add the data rows if this is a single-collection request
-			if ($requestPattern == 'C' || $requestPattern == 'CI') {
-				foreach ($attachedModels as $attachedModelName) {
-					$attachedModelLK = $keys[$attachedModelName]['LK'];
-					$attachedModelRK = $keys[$attachedModelName]['RK'];
-					//unset($keys[$attachedModelName]['LK']);
-					//unset($keys[$attachedModelName]['RK']);
-
-					//if (DEBUG_MODE) Message::addDebugMessage('messages', 'aLK = '.$attachedModelLK.', aRF = '.$attachedModelRK.', data = '.$row[$attachedModelLK]);
-
-					if (!in_array($row[$attachedModelLK], $keys[$attachedModelName])) array_push($keys[$attachedModelName], $row[$attachedModelLK]);
-				}
-
-				array_push($data[$tmpModelName], $row);
-			}
-
-			// add the data rows plus FK 
-			if ($requestPattern == 'CC' || $requestPattern == 'CIC') {
-				$row[$remoteKey] = $tmpId;
-				$row[$targetModelName] = array();
-				array_push($data[$tmpModelName], $row);
-			}
-
-			// if there is a related model, get the FK and store the key
-			//if ($relatedModel !== NULL) array_push($keys[$relatedModelName], $row[$remoteKey]);
-			//if ($relatedModel !== NULL) array_push($keys['remoteKey'], $row[$localKey]);
-		} // while row
-
-		// if there's a related model get its data
-		if ($relatedModel !== NULL) {
-    		// point alias to target model
-    		$tmpModelName = $targetModelName;
-    		$tmpModel = $targetModel;
-    		$tmpTable = $targetTable;
-
-    		// add FK to result set
-    		array_unshift($fields[$tmpModelName], $tmpTable.'.'.$localKey.' AS FK');
-
-			// set up second query as manual inner join
-	    	$query = 'SELECT '. join(',',$fields[$tmpModelName]).' FROM '.$tmpTable.' WHERE '.$localKey.' IN('.join(',', $keys[$relatedModelName]).')';
-
-			if ( $relatedModel === NULL && (!empty($limit)) ) { 
-				$query .= ' LIMIT '.join(',', $limit);
-			}
-
-			if (DEBUG_MODE) Message::addDebugMessage('queries', $query); // debug messages are now serialized
-
-			// query built, now send to server
-			$results = $this->db->query($query);
-
-			// if there's a query error terminate with error status
-			if ($results == false) {
-	 		   	//if (DEBUG_MODE) Message::addDebugMessage('queries', $query);
-	    		//if (DEBUG_MODE) Message::addDebugMessage('keys', $keys);
-				Message::stopError(400,'Query error. Please check request parameters.');
-			}
-
-			// if the result set is empty terminate with error status
-			if ($this->db->query("SELECT FOUND_ROWS()")->fetchColumn() == 0) {
-	 		   	//if (DEBUG_MODE) Message::addDebugMessage('queries', $query);
-	  		  	//if (DEBUG_MODE) Message::addDebugMessage('keys', $keys);
-				Message::stopError(404,'No results matching your request were found.');
-			}
-
-			//$data = array();
-			//$data[$tmpModelName] = array();
-			//$keys = array();
-			$keys[$tmpModelName] = array();
-			// loop through result set and parse
-			while ($row = $results->fetch(PDO::FETCH_ASSOC)) {
-				// extract PK and add to key list
-				array_push($keys[$tmpModelName], $row['PRI']);
-				$tmpId = $row['FK'];
-				unset($row['PRI']); // for internal use - only return requested fields
-				unset($row['FK']); // for internal use - only return requested fields
-				/*
-				// add the data rows if this is a single-collection request
-				if ($requestPattern == 'CIC') {
-					
-					array_push($data[$tmpModelName], $row);
-				}
-				if ($requestPattern == 'CC') {
-					array_push($data[$tmpModelName], $row);
-				}
-				*/
-
-				$tmpArr = array_flip($keys[$relatedModelName]);
-				// create related model row if it doesn't exist
-				// no, really, it should exist.
-				//if (!isset($data[$relatedModelName][$tmpArr[$tmpId]])) $data[$relatedModelName][$tmpArr[$tmpId]] = array();
-				//if (!isset($data[$relatedModelName][$tmpArr[$tmpId]][$targetModelName])) $data[$relatedModelName][$tmpArr[$tmpId]][$targetModelName] = array();
-				
-				// add target model row to project row
-				array_push($data[$relatedModelName][$tmpArr[$tmpId]][$targetModelName], $row);
-
-				foreach ($attachedModels as $attachedModelName) {
-					$attachedModelLK = $keys[$attachedModelName]['LK'];
-					$attachedModelRK = $keys[$attachedModelName]['RK'];
-					//unset($keys[$attachedModelName]['LK']);
-					//unset($keys[$attachedModelName]['RK']);
-
-					//if (DEBUG_MODE) Message::addDebugMessage('messages', 'aLK = '.$attachedModelLK.', aRF = '.$attachedModelRK.', data = '.$row[$attachedModelLK]);
-
-					if (!in_array($row[$attachedModelLK], $keys[$attachedModelName])) array_push($keys[$attachedModelName], $row[$attachedModelLK]);
-				}
-
-
-
-			} // while row
-
-		} // if relatedmodel
-
-    	//if (DEBUG_MODE) Message::addDebugMessage('querydata', $data);
-    	//if (DEBUG_MODE) Message::addDebugMessage('keys', $keys);
-
-		// if there were any tables listed in the attach query parameter, do separate queries for those
-		// and attach to results
-		if ( !empty($attachedModels) ) {
-			foreach ($attachedModels as $attachedModelName) {
-				//break;
-				// define a bucket for the attached table
-				//$data[$attachedModelName] = array();
-				// check the target model's relationship to the attached model to build query
-				// if the models aren't related, don't bother and bail
-				//if (empty($targetModel->relationships[$attachedModelName])) continue;
-
-				// get the attached model records based on target model PK using IN()
-				//$keys[$attachedModelName] = array();
-				//$attachedModelPK = $targetModel->relationships[$attachedModelName]['remoteKey'];
-				//$attachedModelFK = $targetModel->relationships[$attachedModelName]['localKey'];
-
-				/*
-				// set target data alias
-				$tmpTargetData = $relatedModel === NULL ? $data[$targetModelName] : $data[$relatedModelName][$targetModelName];
-				// loop through target data
-				foreach ($tmpTargetData as $row) {
-					if (!in_array($row[$attachedModelFK], $keys[$attachedModelName])) array_push($keys[$attachedModelName], $row[$attachedModelFK]);
-				}
-				*/
-
-				//if ($relatedModel === NULL) {
-				//	foreach ($data[$targetModelName] as $row) {
-				//		if (!in_array($row[$attachedModelFK], $keys[$attachedModelName])) array_push($keys[$attachedModelName], $row[$attachedModelFK]);
-				//	}
-				//
-				//} else {
-					/*
-					foreach ($data[$relatedModelName] as $tmpModel) {
-						foreach ($tmpModel as $row) {
-							//if (!in_array($row[$attachedModelFK], $keys[$attachedModelName])) array_push($keys[$attachedModelName], $row[$attachedModelFK]);
-
-						}
-					}
-					*/
-					//$tmpArr = array_flip($keys[$targetModelName]);
-				//	foreach ($keys[$targetModelName] as $tmpIndex => $tmpId) {
-				//		if (DEBUG_MODE) Message::addDebugMessage('message', 'tmpIndex = '.$tmpIndex.', tmpId = '.$tmpId.', '.$attachedModelFK.' = '.$data[$relatedModelName][$targetModelName][$tmpIndex][$attachedModelFK]);
-				//		array_push($keys[$attachedModelName], $data[$relatedModelName][$targetModelName][$tmpIndex][$attachedModelFK]);
-				//	}
-				//}
-
-				unset($keys[$attachedModelName]['LK']);
-				unset($keys[$attachedModelName]['RK']);
-
-
-    			//if (DEBUG_MODE) Message::addDebugMessage('keys', $keys);
-
-
-
-				$attachedModel = new $attachedModelName($this->db, array($attachedModelName => array('id' => $keys[$attachedModelName], 'requestPattern' => 'CI')));
-				
-				// and append to bucket
-				$data = array_merge($data, $attachedModel->get());
-
-			} // foreach $attachedModelName
-		} // if attached
-
-    	//if (DEBUG_MODE) Message::addDebugMessage('fieldList', $this->getFieldList());
-    	//if (DEBUG_MODE) Message::addDebugMessage('keys', $keys);
-    	//if (DEBUG_MODE) Message::addDebugMessage('queries', $queryList);
-    	//if (DEBUG_MODE) Message::addDebugMessage('querydata', $data);
-		return $data;
-
-    } // get
-
-    /****
-      HEAD - Retrieve either a resource collection or an individual resource if a key is given
-      without the representation data (schema and headers/links only)
-
-      Status Codes 		Condition
-      200 OK 			Successful request
-
-     **/
-    public function head($params = array()) {
-    	// override request params with passed params (if any)
-    	$requestParams = array_merge($this->requestParams, $params);
-
-    	return array((int)microtime(true), 'HEAD Method called.');
-    } // head
-
-    /****
-      POST - Create a new resource in a given collection with complete data
-     **/
-    public function post($params = array()) {
-    	// override request params with passed params (if any)
-    	$requestParams = array_merge($this->requestParams, $params);
-
-    	return array((int)microtime(true), 'POST Method called.');
-    } // post
-
-    /****
-      PUT - Update a resource in a collection with a given id with complete data
-     **/
-    public function put($params = array()) {
-    	// override request params with passed params (if any)
-    	$requestParams = array_merge($this->requestParams, $params);
-
-    	return array((int)microtime(true), 'PUT Method called.');
-    } // put
-
-    /****
-      PATCH - Update a resource in a collection with a given id with partial data
-     **/
-    public function patch($params = array()) {
-    	// override request params with passed params (if any)
-    	$requestParams = array_merge($this->requestParams, $params);
-
-    	return array((int)microtime(true), 'PATCH Method called.');
-    } // patch
-
-    /****
-      DELETE - Delete a resource in a collection with a given id
-     **/
-    public function delete($params = array()) {
-    	// override request params with passed params (if any)
-    	$requestParams = array_merge($this->requestParams, $params);
-
-    	return array((int)microtime(true), 'DELETE Method called.');
-    } // delete
-
-   
 
 } // class Model
 

@@ -98,7 +98,11 @@ The API will return a standard HTTP 1.1 response code on each response describin
 
 3.2 Models
 ----------
-In this API our resources are represented by models. Models are classes that define the characteristics of the resource as defined in the database - table and field names, relationships to other resources, and so on. Resource models derive from a core Model class that provides the basic functionality and connectivity to access the resource.
+In this API our resources are represented by models. Models are classes that define the characteristics of the resource as defined in the database - table and field names, relationships to other resources, and so on. Resource models derive from a core Model class that provides the basic functionality and connectivity to access the resource. In addition, any business logic that governs and/or manipulates the resource content should also be added to the Model subclasses.
+
+The default REST methods (get, put, delete, and so on) in the core Model class are shell methods that call other internal methods for the main functionality. They provide basic scaffolding for out-of-the-box functionality. They can be overridden to customize the business logic as needed.
+
+A model should only be concerned with the specific data it represents. 
 
 3.3. Request Routing
 --------------------

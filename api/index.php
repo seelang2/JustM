@@ -13,9 +13,9 @@ define('DS', DIRECTORY_SEPARATOR);
 // name of the API core directory
 define('API_CORE_DIR', 'api_core');
 // absolute FS path to API core directory location excluding trailing slash
-define('API_CORE_LOCATION', DS.'www'.DS.'localhost'.DS.'public_html'.DS.'timeslips'.DS.'dev'.DS.'api');
+define('API_CORE_LOCATION', DS.'www'.DS.'localhost'.DS.'public_html'.DS.'justm'.DS.'dev'.DS.'api');
 // API base URI location with leading and trailing slashes
-define('URI_BASE', DS.'timeslips'.DS.'dev'.DS.'api'.DS);
+define('URI_BASE', DS.'justm'.DS.'dev'.DS.'api'.DS);
 
 
 // full path to API core with trailing slash

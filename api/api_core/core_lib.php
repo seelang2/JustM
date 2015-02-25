@@ -116,15 +116,19 @@ class Dispatcher {
 		// in a 'model' key
 		if ($useModelKey) $result['model'] = array_shift($paramsArray);
 
+		// list of parameters that should always be returned as arrays
+		$arrParamList = array('fields');
+
 		foreach ($paramsArray as $paramString) {
 			$paramSet = explode('=', $paramString);
 			$valueArray = explode(',', $paramSet[1]);
 			// always return value as an array for consistency
-			//if (count($valueArray) == 1) {
-			//	$result[$paramSet[0]] = $valueArray[0];
-			//} else {
+			// no, only return the params that should always be arrays always as arrays
+			if ( count($valueArray) == 1 && (!in_array(strtolower($paramSet[0]), $arrParamList)) ) {
+				$result[$paramSet[0]] = $valueArray[0];
+			} else {
 				$result[$paramSet[0]] = $valueArray;
-			//}
+			}
 		}
 		return $result;
 	} // parsePath
@@ -193,18 +197,6 @@ class Dispatcher {
 		$parsedRequestParams = Dispatcher::parseRequestParams($request_uri);
 		if (DEBUG_MODE) Message::addDebugMessage('parsedRequestParams', $parsedRequestParams);
 
-		// non-destructively retrieve the first key from the request params array
-		$modelName = array_shift(array_keys($parsedRequestParams));
-
-		// instantiate the root model and pass the request parameters into it
-		$model = new $modelName($db, $parsedRequestParams, $_GET);
-
-		//if (DEBUG_MODE) Message::addDebugMessage('parentModel', $model->parentModel->tableName);
-		//if (DEBUG_MODE) Message::addDebugMessage('subModel', $model->subModel->tableName);
-		//if (DEBUG_MODE) Message::addDebugMessage('modelRequestParams', $model->getRequestParams());
-		if (DEBUG_MODE) Message::addDebugMessage('requestParamsChain', $model->getRequestParamsChain());
-		//if (DEBUG_MODE) Message::addDebugMessage('modelFieldList', $model->getFieldList());
-		//if (DEBUG_MODE) Message::addDebugMessage('queryTest', $model->queryTest());
 
 		// Route the processing to the appropriate Model method
 		// the simplest approach would be to name methods on the model after the request
@@ -212,8 +204,57 @@ class Dispatcher {
 
 		// first test if the method is allowed
 
+		// look through the request segments and instantiate/bind models
+		foreach ($parsedRequestParams as $targetModelName => $requestData) {
+			// the parsed request parameters get passed into the model and become 
+			// the model's default options
+			$modelOptions = $requestData;
+
+			if (!isset($rootModel)) {
+				// instantiate the root model and pass the request parameters into it
+				$rootModel = new $targetModelName($db, $modelOptions);
+				$tmpModel = $rootModel;
+			} else {
+				// bind subsequent models to the root model
+				$tmpModel = $tmpModel->bind($targetModelName, $modelOptions);
+			}
+		}
+		// note that after the above foreach completes, $targetModelName will be set to the target model
+		// (the last model in the request chain)
+
+		// non-destructively retrieve the first key from the request params array
+		//$rootModelName = array_shift(array_keys($parsedRequestParams));
+
+		// collect additional request options to be passed to method
+		$requestOptions = array();
+		//if (!empty($_GET['limit'])) $requestOptions['limit'] = explode(',',$_GET['limit']);
+		//if (!empty($_GET['attach'])) $requestOptions['attach'] = explode(',',$_GET['attach']);
+		
+		// these should get added to the target model, not the root model
+		if (!empty($_GET['limit'])) {
+			if (method_exists($rootModel, $targetModelName))
+				$rootModel->{$targetModelName}->setOptions(array('limit' => explode(',',$_GET['limit'])));
+			else
+				$rootModel->setOptions(array('limit' => explode(',',$_GET['limit'])));
+		}
+
+		if (!empty($_GET['attach'])) {
+			//$requestOptions['attach'] = explode(',',$_GET['attach']);
+			foreach(explode(',',$_GET['attach']) as $attachedModel) {
+				// attached models shouldn't be threaded
+				$tmpModel->bind($attachedModel, array('forceUnthreaded' => true));
+				/*
+				if (method_exists($rootModel, $targetModelName))
+					$rootModel->{$targetModelName}->bind($attachedModel, array('forceUnthreaded' => true));
+				else
+					$rootModel->bind($attachedModel, array('forceUnthreaded' => true));
+				*/
+			}
+		} 
+
+
 		$method = strtolower($_SERVER['REQUEST_METHOD']);
-		$requestData = $model->{$method}();
+		$requestData = $rootModel->{$method}($requestOptions);
 
 		Message::setResponse($requestData); // sets response body data
 		Message::render(); // render output to user agent
