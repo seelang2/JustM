@@ -319,19 +319,19 @@ class Model {
       if ($this->relationships[$parentModelName]['type'] == 'has') {
         // A has B - PK in A, FK in B
         $key = $this->relationships[$parentModelName]['localKey'];
+      } // has
 
-        
-      }
       if ($this->relationships[$parentModelName]['type'] == 'belongsTo') {
         // A belongsTo B - PK in B, FK in A
         // create a bucket to hold the FKs for this bound model
         if (!isset($this->data['FKList'])) $this->data['FKList'] = array();
         $this->data['FKList'][$parentModelName] = array();
         $key = $this->relationships[$parentModelName]['localKey'];
-      }
+      } // belongsTo
+
       if ($this->relationships[$parentModelName]['type'] == 'HABTM') {
         // A HABTM B - FK in link table
-      }
+      } // HABTM
 
       /*
       $this->data['FKList'] = array();
@@ -488,13 +488,30 @@ class Model {
       } else if ($options['type'] == 'threaded') {
         // thread the bound model with the parent model data
         
+        // set up bucket to contain threaded results in each model item
         foreach($this->data['resultSet'][$thisModelName] as $tmpIndex => $row) {
           //$row[$tmpModelName] = array();
           $this->data['resultSet'][$thisModelName][$tmpIndex][$tmpModelName] = array();
         }
 
         if ($relationshipType == 'has') {
-          $tmpKeyList = $tmpData['PKList'];
+          
+          $tmpArray = array_flip($tmpData['PKList']); // invert PK list to search PKs in data
+          foreach ($this->data['FKList'][$tmpModelName] as $tmpIndex => $tmpFK) {
+            //if (!isset($this->data['resultSet'][$thisModelName][$tmpArray[$tmpFK]][$tmpModelName]))
+            //    $this->data['resultSet'][$thisModelName][$tmpArray[$tmpFK]][$tmpModelName] = array();
+
+            if (DEBUG_MODE) Message::addDebugMessage('messages', 'Adding '.$tmpModelName.' element '.$tmpArray[$tmpFK].' to '.$thisModelName.' element '.$tmpIndex);
+            //if (DEBUG_MODE) Message::addDebugMessage('messages', 'Adding '.$tmpModelName.' element '.$tmpIndex.' to '.$thisModelName.' element '.$tmpArray[$tmpFK]);
+            //if (DEBUG_MODE) Message::addDebugMessage($tmpModelName.' element '.$tmpIndex, $tmpData['resultSet'][$tmpModelName][$tmpIndex]);
+            //if (DEBUG_MODE) Message::addDebugMessage($thisModelName.' element '.$tmpArray[$tmpFK], $this->data['resultSet'][$thisModelName][$tmpArray[$tmpFK]][$tmpModelName]);
+
+            array_push(
+              $this->data['resultSet'][$thisModelName][$tmpIndex][$tmpModelName],
+              $tmpData['resultSet'][$tmpModelName][$tmpArray[$tmpFK]]
+            );
+          }
+
 
         } 
         if ($relationshipType == 'belongsTo') {
@@ -504,8 +521,8 @@ class Model {
           $tmpArray = array_flip($this->data['PKList']); // invert PK list to search PKs in data
           //$tmpArray = array_flip($keyList);
 
-          foreach ($tmpData['FKList'] as $tmpParentModelName => $tmpParentFKList) {
-            foreach ($tmpParentFKList as $tmpIndex => $tmpFK) {
+//          foreach ($tmpData['FKList'] as $tmpParentModelName => $tmpParentFKList) {
+            foreach ($tmpData['FKList'][$thisModelName] as $tmpIndex => $tmpFK) {
               //if (!isset($this->data['resultSet'][$thisModelName][$tmpArray[$tmpFK]][$tmpModelName]))
               //    $this->data['resultSet'][$thisModelName][$tmpArray[$tmpFK]][$tmpModelName] = array();
 
@@ -518,7 +535,7 @@ class Model {
                 $tmpData['resultSet'][$tmpModelName][$tmpIndex]
               );
             }
-          }
+//          }
 
         } 
         if ($relationshipType == 'HABTM') {
