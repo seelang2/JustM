@@ -8,10 +8,11 @@
  ****/
 
 
-/****
-  The base Model class that all other models inherit from
-  Defines the base methods and scaffold functionality
- **/
+/**
+ * The base Model class that all other models inherit from.
+ *
+ * Defines the base methods and scaffold functionality
+ */
 class Model {
 
 	protected $modelName = NULL;						// model (class) name
@@ -23,12 +24,13 @@ class Model {
   protected $parentModel = NULL;						// pointer to model this model is bound to
   protected $boundModels = array();					// list of models bound to this model
 
-  /****
-    The options array sets the default options used by the model
-    Valid options:
-    	alias 											Aliased model name (used in relationships)
-      forceUnthreaded             Flag to override threaded data join
-   **/
+  /**
+   * The options array sets the default options used by the model.
+   *
+   * Valid options:
+   * 	alias 											Aliased model name (used in relationships)
+   *  forceUnthreaded             Flag to override threaded data join
+   */
   protected $options = array();						// option settings for model
   
   protected $eventQueue = array(						// container for event queues
@@ -61,14 +63,14 @@ class Model {
 
   protected $data = NULL;								// data being manipulated
 
-  /****
-    a reference to the database connection object is passed to the constructor and stored locally
-    as dependency injection, as are the request parameters.
-
-    Takes the parsed request parameters and instantiates the models required by the request. 
-    Request parameters are stored in each model in the chain. These options can be changed or 
-    overridden by method calls.
-   **/
+  /**
+   * a reference to the database connection object is passed to the constructor and stored locally
+   * as dependency injection, as are the request parameters.
+   *
+   * Takes the parsed request parameters and instantiates the models required by the request. 
+   * Request parameters are stored in each model in the chain. These options can be changed or 
+   * overridden by method calls.
+   */
   function __construct(&$db, $options = array(), &$parentModel = NULL) {
     $this->db = $db;
     $this->modelName = strtolower(get_class($this));
@@ -92,9 +94,9 @@ class Model {
     
   } // __construct
 
-  /****
-    Test method.
-   **/
+  /**
+   * Test method.
+   */
   public function test($params = array()) {
   	// override request params with passed params (if any)
   	$requestParams = array_merge($this->requestParams, $params);
@@ -103,16 +105,16 @@ class Model {
   } // test
 
 
-  /****
-    Returns model name or alias if set
-   **/
+  /**
+   * Returns model name or alias if set
+   */
   public function getModelName() {
     return empty($this->options['alias']) ? $this->modelName : $this->options['alias'];
   } // getModelName
 
-  /****
-    Finds the root of a chain of connected models
-   **/
+  /**
+   * Finds the root of a chain of connected models
+   */
   public function getRootModel() {
     $rootModel = $this;
     while ($rootModel->parentModel != NULL) {
@@ -122,27 +124,27 @@ class Model {
     return $rootModel;
   } // getRootModel
 
-  /****
-    Finds a model in a chain of connected models
-   **/
+  /**
+   * Finds a model in a chain of connected models
+   */
   public function getModel($modelName) {
 
   } // getModel
 
-  /****
-    Loads model table field names array from cache file or creates cache file if it doesn't exist
-    Produces an array where each field has the following keys:
-
-	{
-		"Field": "id",
-		"Type": "int(10) unsigned",
-		"Null": "NO",
-		"Key": "PRI",
-		"Default": null,
-		"Extra": "auto_increment"
-	}
-
-  **/
+  /**
+   * Loads model table field names array from cache file or creates cache file if it doesn't exist
+   * Produces an array where each field has the following keys:
+   *
+   *	{
+   *		"Field": "id",
+   *		"Type": "int(10) unsigned",
+   *		"Null": "NO",
+   *		"Key": "PRI",
+   *		"Default": null,
+   *		"Extra": "auto_increment"
+   *	}
+   *
+   */
   protected function loadFieldList() {
     if (file_exists(CACHE_DIR.DS.strtolower(get_class($this)).'.dat')) {
       $this->fieldList = loadData(CACHE_DIR.DS.strtolower(get_class($this)).'.dat');
@@ -155,9 +157,9 @@ class Model {
 
   } // loadFieldList
 
-  /****
-    Returns dump of fieldList array.
-   **/
+  /**
+   * Returns dump of fieldList array.
+   */
   public function getFieldList() {
     if (empty($this->fieldList)) return false;
 
@@ -165,37 +167,38 @@ class Model {
 
   } // getFieldList
 
-  /****
-    Returns PK for this model's table
-   **/
+  /**
+   * Returns PK for this model's table.
+   */
   public function getPrimaryKey() {
 
     return $this->primaryKey;
 
   } // getPrimaryKey
 
-  /****
-    Returns data variable value
-   **/
+  /**
+   * Returns data variable value.
+   */
   public function getData() {
 
     return $this->Data;
 
   } // getData
 
-  /****
-    Sets model options
-   **/
+  /**
+   * Sets model options.
+   */
   public function setOptions($options) {
 
     $this->options = array_merge($this->options, $options);
 
   } // setOptions
 
-  /****
-    Get a single option parameter or NULL if it doesn't exist
-    (Options shouldn't have a NULL value; they should instead simply not exist)
-   **/
+  /**
+   * Get a single option parameter or NULL if it doesn't exist.
+   *
+   * (Options shouldn't have a NULL value; they should instead simply not exist)
+   */
   public function getOption($option) {
 
     if (!isset($this->options[$option])) return NULL;
@@ -203,17 +206,17 @@ class Model {
 
   } // getOption
 
-  /****
-    Sanitize data for use in SQL query
-   **/
+  /**
+   * Sanitize data for use in SQL query
+   */
   public function sanitize($data = NULL) {
     if (empty($data)) return false;
     return $this->db->quote($data);
   } // sanitize
 
-  /****
-    Binds a model to the current model and returns a reference to the new model
-   **/
+  /**
+   * Binds a model to the current model and returns a reference to the new model.
+   */
   public function bind($modelName, $options = array()) {
   	// allow an alias to be passed as the name of the model
   	$alias = empty($options['alias']) ? $modelName : $options['alias'];
@@ -224,19 +227,20 @@ class Model {
     return $this->{$alias};
   } // bind
 
-  /****
-    Registers an event listener to a queue 
-    The callback will be passed two parameters as defined below: 
-    	function callback(mixed $data, array $options)
-   **/
+  /**
+   * Registers an event listener to a queue.
+   *
+   * The callback will be passed two parameters as defined below: 
+   * function callback(mixed $data, array $options)
+   */
   public function register($eventName, $callback, $options = array()) {
   	if (!isset($this->eventQueue[$eventName])) $this->eventQueue[$eventName] = array();
   	array_push($this->eventQueue[$eventName], array($callback, $options));
   } // register
 
-  /****
-    Executes the callbacks in an event queue, optionally passing data to each
-   **/
+  /**
+   * Executes the callbacks in an event queue, optionally passing data to each.
+   */
   public function trigger($eventName, $data = NULL) {
   	if (!isset($this->eventQueue[$eventName])) return false;
   	foreach ($this->eventQueue[$eventName] as $callbackArray) {
@@ -244,24 +248,25 @@ class Model {
   	}
   } // trigger
 
-  /****
-    Retrieves resource data.
-    Options:
-    	type              What kind of search to perform: 'one','all' ,'count', 'threaded'
-    	id                PK to return. May be single value or array of values
-  		fields            Array of fields to return. Returns all fields by default
-  		limit             Array containing limit parameters - [0] = offset, [1] = range
-  		relatedId         FK from related (bound) model. May be single value or array of values
-  		relatedFields     Fields in bound models to return
-  
-    Returns an array containing the following:
-      resultSet         The fields specified (or all fields) to be retrieved
-      PKList            Array of PKs in result set
-      FKList            (Optional) Nested array of FKs to related models
-      status            Result code of operation. Directly maps to HTTP status codes
-      message           (Optional) Additional information regarding status
-  
-   **/
+  /**
+   * Retrieves resource data.
+   *
+   * Options:
+   * 	type              What kind of search to perform: 'one','all' ,'count', 'threaded'
+   * 	id                PK to return. May be single value or array of values
+   *	fields            Array of fields to return. Returns all fields by default
+   *	limit             Array containing limit parameters - [0] = offset, [1] = range
+   *	relatedId         FK from related (bound) model. May be single value or array of values
+   *	relatedFields     Fields in bound models to return
+   *
+   * Returns an array containing the following:
+   *  resultSet         The fields specified (or all fields) to be retrieved
+   *  PKList            Array of PKs in result set
+   *  FKList            (Optional) Nested array of FKs to related models
+   *  status            Result code of operation. Directly maps to HTTP status codes
+   *  message           (Optional) Additional information regarding status
+   *
+   */
   public function find($options = array()) {
   	$this->trigger('beforeFind');
 
@@ -304,10 +309,6 @@ class Model {
       }
     }
 
-    //if ($this->parentModel !== NULL) $useFKList = true;
-
-    // if (DEBUG_MODE) Message::addDebugMessage($this->getModelName().'boundModels', $this->boundModels);
-
     // if this is a bound model, get the relationship info about the parent
     if ($this->parentModel !== NULL) {
       $parentModelName = $this->parentModel->getModelName();
@@ -338,18 +339,6 @@ class Model {
         $FKtableName = $this->parentModel->relationships[$thisModelName]['linkTable'];
       } // HABTM
 
-      /*
-      $this->data['FKList'] = array();
-      $parentModelName = $this->parentModel->getModelName();
-
-      if (!empty($this->relationships[$parentModelName]['linkTable'])) {
-        $relatedTable = $this->relationships[$parentModelName]['linkTable'];
-      }
-
-      $localKey = $this->relationships[$parentModelName]['localKey']; // PARENT model PK
-      $remoteKey = $this->relationships[$parentModelName]['remoteKey']; // PARENT model FK in bound model
-      */
-    
       if (isset($this->data['FKList'][$parentModelName])) array_unshift($fields, $FKtableName.'.'.$key." AS '".$parentModelName.".FK'");
     } // if parentModel
 
@@ -509,13 +498,8 @@ class Model {
           
           $tmpArray = array_flip($tmpData['PKList']); // invert PK list to search PKs in data
           foreach ($this->data['FKList'][$tmpModelName] as $tmpIndex => $tmpFK) {
-            //if (!isset($this->data['resultSet'][$thisModelName][$tmpArray[$tmpFK]][$tmpModelName]))
-            //    $this->data['resultSet'][$thisModelName][$tmpArray[$tmpFK]][$tmpModelName] = array();
 
             if (DEBUG_MODE) Message::addDebugMessage('messages', 'Adding '.$tmpModelName.' element '.$tmpArray[$tmpFK].' to '.$thisModelName.' element '.$tmpIndex);
-            //if (DEBUG_MODE) Message::addDebugMessage('messages', 'Adding '.$tmpModelName.' element '.$tmpIndex.' to '.$thisModelName.' element '.$tmpArray[$tmpFK]);
-            //if (DEBUG_MODE) Message::addDebugMessage($tmpModelName.' element '.$tmpIndex, $tmpData['resultSet'][$tmpModelName][$tmpIndex]);
-            //if (DEBUG_MODE) Message::addDebugMessage($thisModelName.' element '.$tmpArray[$tmpFK], $this->data['resultSet'][$thisModelName][$tmpArray[$tmpFK]][$tmpModelName]);
 
             array_push(
               $this->data['resultSet'][$thisModelName][$tmpIndex][$tmpModelName],
@@ -523,52 +507,24 @@ class Model {
             );
           }
 
-
         } 
         if ($relationshipType == 'belongsTo') {
-          //$tmpArray = array_flip($this->data['PKList']); // invert PK list to search PKs in data
-          //$tmpKeyList = $tmpData['FKList'][$tmpModelName];
-
           $tmpArray = array_flip($this->data['PKList']); // invert PK list to search PKs in data
-          //$tmpArray = array_flip($keyList);
 
-//          foreach ($tmpData['FKList'] as $tmpParentModelName => $tmpParentFKList) {
             foreach ($tmpData['FKList'][$thisModelName] as $tmpIndex => $tmpFK) {
-              //if (!isset($this->data['resultSet'][$thisModelName][$tmpArray[$tmpFK]][$tmpModelName]))
-              //    $this->data['resultSet'][$thisModelName][$tmpArray[$tmpFK]][$tmpModelName] = array();
 
               if (DEBUG_MODE) Message::addDebugMessage('messages', 'Adding '.$tmpModelName.' element '.$tmpIndex.' to '.$thisModelName.' element '.$tmpArray[$tmpFK]);
-              //if (DEBUG_MODE) Message::addDebugMessage($tmpModelName.' element '.$tmpIndex, $tmpData['resultSet'][$tmpModelName][$tmpIndex]);
-              //if (DEBUG_MODE) Message::addDebugMessage($thisModelName.' element '.$tmpArray[$tmpFK], $this->data['resultSet'][$thisModelName][$tmpArray[$tmpFK]][$tmpModelName]);
 
               array_push(
                 $this->data['resultSet'][$thisModelName][$tmpArray[$tmpFK]][$tmpModelName],
                 $tmpData['resultSet'][$tmpModelName][$tmpIndex]
               );
             }
-//          }
 
         } 
         if ($relationshipType == 'HABTM') {
 
         } 
-
-        /*
-        //$tmpArray = array_flip($this->data['PKList']); // invert PK list to search PKs in data
-         $tmpArray = array_flip($keyList);
-
-        foreach ($tmpKeyList as $tmpParentModelName => $tmpParentFKList) {
-          foreach ($tmpParentFKList as $tmpIndex => $tmpFK) {
-            //if (!isset($this->data['resultSet'][$thisModelName][$tmpArray[$tmpFK]][$tmpModelName]))
-            //    $this->data['resultSet'][$thisModelName][$tmpArray[$tmpFK]][$tmpModelName] = array();
-            
-            array_push(
-              $this->data['resultSet'][$thisModelName][$tmpArray[$tmpFK]][$tmpModelName],
-              $tmpData['resultSet'][$tmpModelName][$tmpIndex]
-            );
-          }
-        }
-        */
 
         // now passthrough any other attached data in resultset
         // remove already processed data set
@@ -583,12 +539,9 @@ class Model {
         
         // remove already processed data set
         unset($tmpData['resultSet'][$tmpModelName]); 
-      }
-
-
+      } // collation
 
     } // foreach boundModel
-
 
     // set Ok status
     $this->data['status'] = 200;
@@ -599,7 +552,52 @@ class Model {
   	return $this->data;
   } // find
 
+  /**
+   * Sends a query to the database server.
+   * 
+   * @param string $query The query to send to the server.
+   *
+   * @param array $options An array of options. Valid options are:
+   * returnAsArray  - Returns an array containing the result set data. Valid values are
+   * true and false (default).
+   * fetch-style  - Determines whether the array returned when using returnAsArray is 
+   * numeric, associative (default), or both. Valid values are 'num', 'assoc', and 'both'. 
+   *
+   * @return mixed The default return value is a reference to the result set on the 
+   * server. 
+   *
+   * On a query error or if the result set is empty, an associative array will
+   * be returned with two keys: status, which is an HTTP response code (400 if there is 
+   * a query error or 404 if an empty result set), and message, which contains a text 
+   * string with information about the status.
+   *
+   * If the 'returnAsArray' option is set to true, the results will be returned as an array
+   * formatted per the fetch-style option.
+   */
+  public function query($query, $options = array()) {
 
+    if (DEBUG_MODE) Message::addDebugMessage('queries', $query);
+    
+    // query built, now send to server
+    $results = $this->db->query($query);
+
+    // if there's a query error terminate with error status
+    if ($results == false) {
+      return array(
+        'status'      => 400,
+        'message'     => 'Query error. Please check request parameters.'
+      );
+    }
+
+    // if the result set is empty terminate with error status
+    if ($this->db->query("SELECT FOUND_ROWS()")->fetchColumn() == 0) {
+      return array(
+        'status'      => 404,
+        'message'     => 'No results matching your request were found.'
+      );
+    }
+
+  } // query
 
 
  /****
@@ -610,65 +608,65 @@ class Model {
    See http://tools.ietf.org/html/rfc7231
   **/
 
-  /****
-    GET - Retrieve either a resource collection or an individual resource if a key is given
-
-    get() can also be passed an array that overrides the request params, which is useful when 
-    creating separate unbound instances of a model. 
-
-    Also, the 'id' element can be an array of values, which will then cause the query to use 
-    'WHERE id IN(...)' referencing the array of ids.
-
-    Status Codes 		Condition
-    200 OK 			Successful request
-    404 Not Found 	When query returns an empty set
-    400 Bad Request 	Improper parameters sent or query error
-
-   **/
+  /**
+   * Retrieve either a resource collection or an individual resource if a key is given.
+   *
+   * get() can also be passed an array that overrides the default model params, which is useful 
+   * when creating separate unbound instances of a model. 
+   *
+   * Also, the 'id' element can be an array of values, which will then cause the query to use 
+   * 'WHERE id IN(...)' referencing the array of ids.
+   *
+   * Status Codes 		Condition
+   * 200 OK 			Successful request
+   * 404 Not Found 	When query returns an empty set
+   * 400 Bad Request 	Improper parameters sent or query error
+   *
+   */
   public function get($options = array()) {
     return $this->find($options);
   } // get
 
-  /****
-    HEAD - Retrieve either a resource collection or an individual resource if a key is given
-    without the representation data (schema and headers/links only)
-
-    Status Codes 		Condition
-    200 OK 			Successful request
-
-   **/
+  /**
+   * Retrieve either a resource collection or an individual resource if a key is given
+   * without the representation data (schema and headers/links only)
+   *
+   * Status Codes 		Condition
+   * 200 OK 			Successful request
+   *
+   */
   public function head($options = array()) {
 
   	return array((int)microtime(true), 'HEAD Method called.');
   } // head
 
-  /****
-    POST - Create a new resource in a given collection with complete data
-   **/
+  /**
+   * Create a new resource in a given collection with complete data
+   */
   public function post($options = array()) {
 
   	return array((int)microtime(true), 'POST Method called.');
   } // post
 
-  /****
-    PUT - Update (replace) a resource in a collection with a given id with complete data
-   **/
+  /**
+   * Update (replace) a resource in a collection with a given id with complete data
+   */
   public function put($options = array()) {
 
   	return array((int)microtime(true), 'PUT Method called.');
   } // put
 
-  /****
-    PATCH - Update a resource in a collection with a given id with partial data
-   **/
+  /**
+   * Update a resource in a collection with a given id with partial data
+   */
   public function patch($options = array()) {
 
   	return array((int)microtime(true), 'PATCH Method called.');
   } // patch
 
-  /****
-    DELETE - Delete a resource in a collection with a given id
-   **/
+  /**
+   * Delete a resource in a collection with a given id
+   */
   public function delete($options = array()) {
 
   	return array((int)microtime(true), 'DELETE Method called.');
