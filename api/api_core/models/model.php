@@ -257,8 +257,9 @@ class Model {
     Returns an array containing the following:
       resultSet         The fields specified (or all fields) to be retrieved
       PKList            Array of PKs in result set
+      FKList            (Optional) Nested array of FKs to related models
       status            Result code of operation. Directly maps to HTTP status codes
-      message           Additional information regarding status
+      message           (Optional) Additional information regarding status
   
    **/
   public function find($options = array()) {
@@ -327,10 +328,14 @@ class Model {
         if (!isset($this->data['FKList'])) $this->data['FKList'] = array();
         $this->data['FKList'][$parentModelName] = array();
         $key = $this->relationships[$parentModelName]['localKey'];
+        $FKtableName = $this->tableName;
       } // belongsTo
 
       if ($this->relationships[$parentModelName]['type'] == 'HABTM') {
         // A HABTM B - FK in link table
+        $this->data['FKList'][$parentModelName] = array();
+        $key = $this->parentModel->relationships[$thisModelName]['remoteKey'];
+        $FKtableName = $this->parentModel->relationships[$thisModelName]['linkTable'];
       } // HABTM
 
       /*
@@ -345,7 +350,7 @@ class Model {
       $remoteKey = $this->relationships[$parentModelName]['remoteKey']; // PARENT model FK in bound model
       */
     
-      if (isset($this->data['FKList'][$parentModelName])) array_unshift($fields, $this->tableName.'.'.$key." AS '".$parentModelName.".FK'");
+      if (isset($this->data['FKList'][$parentModelName])) array_unshift($fields, $FKtableName.'.'.$key." AS '".$parentModelName.".FK'");
     } // if parentModel
 
   	// add in the PK and FK fields for the models for aggregation purposes
@@ -384,6 +389,12 @@ class Model {
 
   	// begin building query
     $query = 'SELECT DISTINCT '. join(',',$fields) . ' FROM `'. $this->tableName .'`';
+
+    // if this is a bound HABTM, connect the link table as a join
+    // (will have to benchmark this and likely tune for performance later)
+    if ($this->parentModel !== NULL && $this->relationships[$parentModelName]['type'] == 'HABTM') {
+      $query .= ' INNER JOIN '.$this->relationships[$parentModelName]['linkTable'].' ON ('.$this->relationships[$parentModelName]['remoteKey'].' = '.$this->relationships[$parentModelName]['localKey'].') ';
+    } 
 
     // add id if passed
     if (isset($options['id'])) {
