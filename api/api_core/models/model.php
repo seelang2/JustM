@@ -424,14 +424,18 @@ class Model {
       }
     }
 
-    // apply limit
+    // apply limit 
     if (!empty($limit)) { 
       $query .= ' LIMIT '.join(',', $limit);
     }
 
-    if (DEBUG_MODE) Message::addDebugMessage('queries', $query); // debug messages are now serialized
+    //if (DEBUG_MODE) Message::addDebugMessage('queries', $query); // debug messages are now serialized
 
     // query built, now send to server
+    $results = $this->query($query);
+    if ($results )
+
+    /*
     $results = $this->db->query($query);
 
     // if there's a query error terminate with error status
@@ -449,6 +453,7 @@ class Model {
         'message'     => 'No results matching your request were found.'
       );
     }
+    */
 
     // make short alias to resultSet
     $resultSet = &$this->data['resultSet'][$thisModelName];
@@ -569,13 +574,15 @@ class Model {
    * @param string $query The query to send to the server.
    *
    * @param array $options An array of options. Valid options are:
+   * 
    * returnAsArray  - Returns an array containing the result set data. Valid values are
    * true and false (default).
-   * fetch-style  - Determines whether the array returned when using returnAsArray is 
+   * 
+   * fetchStyle  - Determines whether the array returned when using returnAsArray is 
    * numeric, associative (default), or both. Valid values are 'num', 'assoc', and 'both'. 
    *
-   * @return mixed $result The default return value is a reference to the result set on the 
-   * server. 
+   * @return mixed $result The default return value is a PDOStatement object referencing the 
+   * result set on the server. 
    *
    * On a query error or if the result set is empty, an associative array will
    * be returned with two keys: status, which is an HTTP response code (400 if there is 
@@ -584,8 +591,18 @@ class Model {
    *
    * If the 'returnAsArray' option is set to true, the results will be returned as an array
    * formatted per the fetch-style option.
+   * 
+   * @todo change the return values on query errors as they currently can collide with result set data 
    */
   public function query($query, $options = array()) {
+    // merge options with defaults
+    $options = array_merge(
+      array(
+        'returnAsArray'   => false,
+        'fetchStyle'      => 'assoc'
+      ),
+      $options
+    );
 
     if (DEBUG_MODE) Message::addDebugMessage('queries', $query);
     
@@ -600,13 +617,25 @@ class Model {
       );
     }
 
+    $found_rows = $this->db->query("SELECT FOUND_ROWS()")->fetchColumn();
+
     // if the result set is empty terminate with error status
-    if ($this->db->query("SELECT FOUND_ROWS()")->fetchColumn() == 0) {
+    if ($found_rows == 0) {
       return array(
         'status'      => 404,
         'message'     => 'No results matching your request were found.'
       );
     }
+
+    if (DEBUG_MODE) Message::addDebugMessage('found_rows', $found_rows);
+
+    if (!$options['returnAsArray']) return $results;
+
+    if (strtolower($options['fetchStyle']) == 'num') return $results->fetchAll(PDO::FETCH_NUM);
+    if (strtolower($options['fetchStyle']) == 'assoc') return $results->fetchAll(PDO::FETCH_ASSOC);
+    if (strtolower($options['fetchStyle']) == 'both') return $results->fetchAll(PDO::FETCH_BOTH);
+    if (strtolower($options['fetchStyle']) == 'obj') return $results->fetchAll(PDO::FETCH_OBJ);
+
 
   } // query
 
