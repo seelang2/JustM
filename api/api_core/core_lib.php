@@ -13,8 +13,9 @@ spl_autoload_register(function ($class) {
     if (file_exists(API_CORE_PATH.DS.'models'.DS.$class.'.php')) {
 	    include (API_MODEL_PATH.$class.'.php');
 	} else {
+    	if (DEBUG_MODE) Message::addDebugMessage('errorMessage', 'Model file does not exist: '.API_CORE_PATH.'models'.DS.$class.'.php');
 		header("HTTP/1.1 400 Bad Request");
-		Message::addResponseKey('error_message','Requested resource model does not exist: '.API_CORE_PATH.DS.'models'.DS.$class.'.php');
+		Message::addResponseKey('error_message','Requested resource model does not exist: '.$class);
 		Message::render($useJsonEnvelope);
 		exit();
 	}
@@ -256,7 +257,8 @@ class Dispatcher {
 		$method = strtolower($_SERVER['REQUEST_METHOD']);
 		$requestData = $rootModel->{$method}($requestOptions);
 
-		Message::setResponse($requestData); // sets response body data
+		Message::setResponse($requestData['data']); // sets response body data
+		Message::setHTTPStatus($requestData['status']); // set HTTP status code
 		Message::render(); // render output to user agent
 
 	} // route

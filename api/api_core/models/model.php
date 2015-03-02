@@ -680,7 +680,8 @@ class Model {
    * true and false (default).
    * 
    * fetchStyle  - Determines whether the array returned when using returnAsArray is 
-   * numeric, associative (default), or both. Valid values are 'num', 'assoc', and 'both'. 
+   * numeric, associative (default), an array with both numeric and associative keys, or as 
+   * an object. Valid values are 'num', 'assoc', 'both', and 'obj'. 
    *
    * @return mixed $result The default return value is a PDOStatement object referencing the 
    * result set on the server. 
@@ -693,7 +694,6 @@ class Model {
    * If the 'returnAsArray' option is set to true, the results will be returned as an array
    * formatted per the fetch-style option.
    * 
-   * @todo change the return values on query errors as they currently can collide with result set data 
    */
   public function query($query, $options = array()) {
     // merge options with defaults
@@ -712,26 +712,16 @@ class Model {
 
     // if there's a query error terminate with error status
     if ($results == false) {
+      if (DEBUG_MODE) Message::addDebugMessage('errorMessage', 'Query error. Please check request parameters.');
       return 400;
-      /*
-      return array(
-        'status'      => 400,
-        'message'     => 'Query error. Please check request parameters.'
-      );
-      */
     }
 
     $found_rows = $this->db->query("SELECT FOUND_ROWS()")->fetchColumn();
 
     // if the result set is empty terminate with error status
     if ($found_rows == 0) {
+      if (DEBUG_MODE) Message::addDebugMessage('errorMessage', 'No results matching your request were found.');
       return 404;
-      /*
-      return array(
-        'status'      => 404,
-        'message'     => 'No results matching your request were found.'
-      );
-      */
     }
 
     if (DEBUG_MODE) Message::addDebugMessage('found_rows', $found_rows);
