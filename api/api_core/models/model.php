@@ -309,7 +309,7 @@ class Model {
         $relationshipType = $tmpModelPointer->relationships[$thisModelName]['type'];
         if (DEBUG_MODE) Message::addDebugMessage('messages', $tmpModelName.' bound to '.$thisModelName.' using '.$relationshipType);
         if ($relationshipType == 'has') {
-          // create a bucket to hold the FKs for this bound model
+          // create a bucket in the parent model to hold the FKs for this bound model
           if (!isset($this->data['FKList'])) $this->data['FKList'] = array();
           $this->data['FKList'][$tmpModelName] = array();
 
@@ -336,7 +336,7 @@ class Model {
 
       if ($this->relationships[$parentModelName]['type'] == 'belongsTo') {
         // A belongsTo B - PK in B, FK in A
-        // create a bucket to hold the FKs for this bound model
+        // create a bucket in the bound model to hold the FKs for the parent model
         if (!isset($this->data['FKList'])) $this->data['FKList'] = array();
         $this->data['FKList'][$parentModelName] = array();
         $key = $this->relationships[$parentModelName]['localKey'];
@@ -345,15 +345,17 @@ class Model {
 
       if ($this->relationships[$parentModelName]['type'] == 'HABTM') {
         // A HABTM B - FK in link table
-        $this->data['FKList'][$parentModelName] = array();
-        $key = $this->parentModel->relationships[$thisModelName]['remoteKey'];
-        $FKtableName = $this->parentModel->relationships[$thisModelName]['linkTable'];
+        // we query the link table separately later when processing bound models
+        //$this->data['FKList'][$parentModelName] = array();
+        //$key = $this->parentModel->relationships[$thisModelName]['remoteKey'];
+        //$FKtableName = $this->parentModel->relationships[$thisModelName]['linkTable'];
       } // HABTM
 
+      // add in the FK field for the models for aggregation purposes
       if (isset($this->data['FKList'][$parentModelName])) array_unshift($fields, $FKtableName.'.'.$key." AS '".$parentModelName.".FK'");
     } // if parentModel
 
-  	// add in the PK and FK fields for the models for aggregation purposes
+  	// add in the PK field for the models for aggregation purposes
   	array_unshift($fields, $this->tableName.'.'.$this->primaryKey.' AS PRI');
 
     // if type is count then just perform a count query with one field
@@ -390,11 +392,13 @@ class Model {
   	// begin building query
     $query = 'SELECT DISTINCT '. join(',',$fields) . ' FROM `'. $this->tableName .'`';
 
+    /*
     // if this is a bound HABTM, connect the link table as a join
     // (will have to benchmark this and likely tune for performance later)
     if ($this->parentModel !== NULL && $this->relationships[$parentModelName]['type'] == 'HABTM') {
       $query .= ' INNER JOIN '.$this->relationships[$parentModelName]['linkTable'].' ON ('.$this->relationships[$parentModelName]['remoteKey'].' = '.$this->relationships[$parentModelName]['localKey'].') ';
     } 
+    */
 
     // add id if passed
     if (isset($options['id'])) {
@@ -433,7 +437,9 @@ class Model {
 
     // query built, now send to server
     $results = $this->query($query);
-    if ($results )
+    if ( is_numeric($results) ) {
+      return $results;
+    }
 
     /*
     $results = $this->db->query($query);
@@ -486,9 +492,51 @@ class Model {
 
       $keyList = $relationshipType == 'has' ? $this->data['FKList'][$tmpModelName] : $this->data['PKList'];
 
-      $tmpData = $this->{$tmpModelName}->get(array(
-        'relatedId'    => $keyList
-      ));
+      // if there's a HABTM relationship between this model and the bound model,
+      // we need to do query the link table to retrieve the link records
+      // and bound model PKs
+      if ($relationshipType == 'HABTM') {
+        $parentModelFK = $this->relationships[$tmpModelName]['remoteKey'];
+        $boundModelFK = $tmpModelPointer->relationships[$thisModelName]['remoteKey'];
+
+        // first we query the link table to get the bound table records
+        $query = "SELECT ".$parentModelFK.
+                  ",".$boundModelFK.
+                  " FROM ".$this->relationships[$tmpModelName]['linkTable'].
+                  " WHERE ".$parentModelFK.
+                  " IN(".join(',',$keyList).")";
+        
+        $HABTMkeys = $this->query($query, array('returnAsArray' => true));
+        if (is_numeric($HABTMkeys)) {
+          return $HABTMkeys;
+        }
+        // collect the PKs for the bound model into keyList
+        $keyList = array();
+        foreach ($HABTMkeys as $tmpArray) {
+          array_push($keyList, $tmpArray[$tmpModelPointer->relationships[$thisModelName]['remoteKey']]);
+        }
+
+        if (DEBUG_MODE) Message::addDebugMessage($tmpModelName.'_HABTMkeyList', $keyList);
+      } 
+
+      if (DEBUG_MODE) Message::addDebugMessage($tmpModelName.'_HABTMData', $HABTMkeys);
+
+      // HABTM retrieves bound models based on PK
+      // other relationship types are based on FK
+      if ($relationshipType == 'HABTM') {
+        $tmpData = $this->{$tmpModelName}->find(array(
+          'id'    => $keyList
+        ));
+      } else {
+        $tmpData = $this->{$tmpModelName}->find(array(
+          'relatedId'    => $keyList
+        ));
+      }
+
+      // check result for status code rather than data
+      if (is_numeric($tmpData)) {
+        return $tmpData;
+      }
       
       if (DEBUG_MODE) Message::addDebugMessage($tmpModelName.'_getData', $tmpData);
 
@@ -497,6 +545,26 @@ class Model {
       if ($tmpModelPointer->getOption('forceUnthreaded') == true) {
         // leave data unthreaded
         $this->data['resultSet'] = array_merge($this->data['resultSet'], $tmpData['resultSet']);
+
+        if ($relationshipType == 'HABTM') {
+          // set up bucket to contain mapped results in each model item
+          foreach($this->data['resultSet'][$thisModelName] as $tmpIndex => $row) {
+            //$row[$tmpModelName] = array();
+            $this->data['resultSet'][$thisModelName][$tmpIndex][$tmpModelName] = array();
+          }
+
+          $tmpArray = array_flip($this->data['PKList']); // invert PK list to search PKs in data
+          $tmpArray2 = array_flip($tmpData['PKList']); // invert PK list to search PKs in data
+
+          // loop through HABTM keymap
+          foreach ($HABTMkeys as $row) {
+            // add only the index of the attached data array to the parent model
+            array_push(
+              $this->data['resultSet'][$thisModelName][$tmpArray[$row[$parentModelFK]]][$tmpModelName],
+              $tmpArray2[$row[$boundModelFK]]
+            );
+          }
+        } // if HABTM
 
         // remove already processed data set
         unset($tmpData['resultSet'][$tmpModelName]); 
@@ -539,6 +607,19 @@ class Model {
 
         } 
         if ($relationshipType == 'HABTM') {
+          $tmpArray = array_flip($this->data['PKList']); // invert PK list to search PKs in data
+          $tmpArray2 = array_flip($tmpData['PKList']); // invert PK list to search PKs in data
+
+          // loop through HABTM keymap
+          foreach ($HABTMkeys as $row) {
+
+            //if (DEBUG_MODE) Message::addDebugMessage('messages', 'Adding '.$tmpModelName.' element '.$tmpIndex.' to '.$thisModelName.' element '.$tmpArray[$tmpFK]);
+
+            array_push(
+              $this->data['resultSet'][$thisModelName][$tmpArray[$row[$parentModelFK]]][$tmpModelName],
+              $tmpData['resultSet'][$tmpModelName][$tmpArray2[$row[$boundModelFK]]]
+            );
+          }
 
         } 
 
@@ -553,6 +634,26 @@ class Model {
         //$this->data['resultSet'][$tmpModelName] = $tmpData['resultSet'][$tmpModelName];
         $this->data['resultSet'] = array_merge($this->data['resultSet'], $tmpData['resultSet']);
         
+        if ($relationshipType == 'HABTM') {
+          // set up bucket to contain mapped results in each model item
+          foreach($this->data['resultSet'][$thisModelName] as $tmpIndex => $row) {
+            //$row[$tmpModelName] = array();
+            $this->data['resultSet'][$thisModelName][$tmpIndex][$tmpModelName] = array();
+          }
+
+          $tmpArray = array_flip($this->data['PKList']); // invert PK list to search PKs in data
+          $tmpArray2 = array_flip($tmpData['PKList']); // invert PK list to search PKs in data
+
+          // loop through HABTM keymap
+          foreach ($HABTMkeys as $row) {
+            // add only the index of the attached data array to the parent model
+            array_push(
+              $this->data['resultSet'][$thisModelName][$tmpArray[$row[$parentModelFK]]][$tmpModelName],
+              $tmpArray2[$row[$boundModelFK]]
+            );
+          }
+        } // if HABTM
+
         // remove already processed data set
         unset($tmpData['resultSet'][$tmpModelName]); 
       } // collation
@@ -605,26 +706,32 @@ class Model {
     );
 
     if (DEBUG_MODE) Message::addDebugMessage('queries', $query);
-    
+
     // query built, now send to server
     $results = $this->db->query($query);
 
     // if there's a query error terminate with error status
     if ($results == false) {
+      return 400;
+      /*
       return array(
         'status'      => 400,
         'message'     => 'Query error. Please check request parameters.'
       );
+      */
     }
 
     $found_rows = $this->db->query("SELECT FOUND_ROWS()")->fetchColumn();
 
     // if the result set is empty terminate with error status
     if ($found_rows == 0) {
+      return 404;
+      /*
       return array(
         'status'      => 404,
         'message'     => 'No results matching your request were found.'
       );
+      */
     }
 
     if (DEBUG_MODE) Message::addDebugMessage('found_rows', $found_rows);
@@ -664,7 +771,14 @@ class Model {
    *
    */
   public function get($options = array()) {
-    return $this->find($options);
+    // lookup data
+    $data = $this->find($options);
+    // only return the resultset and status data in an array wrapper
+    $result = array(
+      'data'    => $data['resultSet'],
+      'status'  => $data['status']
+    );
+    return $result;
   } // get
 
   /**
