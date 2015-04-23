@@ -188,6 +188,8 @@ The response from the API will be in JSON format. Data will not be wrapped in an
 
 
 
+Tigger2:/www/localhost/public_html/justm/dev
+chris$phpdoc -d ./api -t ./support/docs/html/api
 
 
 

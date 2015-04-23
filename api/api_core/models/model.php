@@ -71,12 +71,19 @@ class Model {
   protected $data = NULL;	
 
   /**
-   * a reference to the database connection object is passed to the constructor and stored locally
-   * as dependency injection, as are the request parameters.
+   * Class constructor.
+   * 
+   * At instantiation, the constructor stores a reference to the database connection and sets the
+   * Model name of the instance to the class name. It also retrieves the field list for the table 
+   * associated with the model. The field list is cached for future instances.
    *
-   * Takes the parsed request parameters and instantiates the models required by the request. 
-   * Request parameters are stored in each model in the chain. These options can be changed or 
-   * overridden by method calls.
+   * Options can be passed in and set as default options for the instance. These can be overridden 
+   * by passing in options to the class methods. 
+   * 
+   * @param PDO $db A reference to the database connection object (uses the PDO class).
+   * @param array $options An array of options to set as the instance defaults.
+   * @param ModelClass $parentModel (Optional) The model object this instance should be bound to.
+   *
    */
   function __construct(&$db, $options = array(), &$parentModel = NULL) {
     $this->db = $db;
@@ -134,7 +141,8 @@ class Model {
   } // getRootModel
 
   /**
-   * Finds a model in a chain of connected models.
+   * Finds a model in a chain of connected models. Not currently implemented.
+   * 
    */
   public function getModel($modelName) {
 
@@ -168,7 +176,7 @@ class Model {
 
   /**
    * Returns dump of fieldList array.
-   * @return array $fieldList
+   * @return array $fieldList Array of fields inside model database table
    */
   public function getFieldList() {
     if (empty($this->fieldList)) return false;
@@ -179,7 +187,7 @@ class Model {
 
   /**
    * Returns the name of the Primary Key field for this model's table.
-   * @return string $primaryKey
+   * @return string $primaryKey Primary Key for model's table.
    */
   public function getPrimaryKey() {
 
@@ -189,6 +197,7 @@ class Model {
 
   /**
    * Returns data variable value.
+   * @return mixed $value The requested variable.
    */
   public function getData() {
 
@@ -197,7 +206,9 @@ class Model {
   } // getData
 
   /**
-   * Sets model options.
+   * Sets model options. Will override the options set at instantiation.
+   * @param array $options Array of options to set.
+   * @return none
    */
   public function setOptions($options) {
 
@@ -209,6 +220,8 @@ class Model {
    * Get a single option parameter or NULL if it doesn't exist.
    *
    * (Options shouldn't have a NULL value; they should instead simply not exist)
+   * @param string $option Name of option to return.
+   * @return mixed $value Option value or NULL.
    */
   public function getOption($option) {
 
@@ -218,7 +231,9 @@ class Model {
   } // getOption
 
   /**
-   * Sanitize data for use in SQL query
+   * Sanitize data for use in SQL query.
+   * @param mixed $data The data to process.
+   * @return string $value A string value that has been escaped and quoted as necessary.
    */
   public function sanitize($data = NULL) {
     if (empty($data)) return false;
@@ -270,13 +285,15 @@ class Model {
    *	relatedId         FK from related (bound) model. May be single value or array of values
    *	relatedFields     Fields in bound models to return
    *
-   * Returns an array containing the following:
+   * Returns an array containing the following elements:
    *  resultSet         The fields specified (or all fields) to be retrieved
    *  PKList            Array of PKs in result set
    *  FKList            (Optional) Nested array of FKs to related models
    *  status            Result code of operation. Directly maps to HTTP status codes
    *  message           (Optional) Additional information regarding status
    *
+   * @param array $options Array of options
+   * @return array $results
    */
   public function find($options = array()) {
   	$this->trigger('beforeFind');
@@ -519,7 +536,7 @@ class Model {
         if (DEBUG_MODE) Message::addDebugMessage($tmpModelName.'_HABTMkeyList', $keyList);
       } 
 
-      if (DEBUG_MODE) Message::addDebugMessage($tmpModelName.'_HABTMData', $HABTMkeys);
+      //if (DEBUG_MODE) Message::addDebugMessage($tmpModelName.'_HABTMData', $HABTMkeys);
 
       // HABTM retrieves bound models based on PK
       // other relationship types are based on FK
@@ -736,6 +753,34 @@ class Model {
 
   } // query
 
+  /**
+   * Saves model data
+   * 
+   * The model data should be structured as a nested array. The topmost array should be the model name.
+   * Table fields are then elements inside the model array.
+   *
+   * For example, suppose we have a model Contacts whose table columns include firstname, lastname, and 
+   * email. The array structure should look like this:
+   *
+   * array('Contacts' => array(
+   *    'firstname' => 'John',
+   *    'lastname' => 'Doe',
+   *    'email' => 'johndoe@email.com'
+   * ))
+   * 
+   * Note that the absence of the table's primary key field will result in a new record being created in 
+   * the table. If the primary key is included, then the function will update the record specified by the 
+   * primary key.
+   *
+   * Models can be associated together by nesting the related model within the 'parent' model. 
+   *
+   * The options array contains options that control the behavior of the save operation.
+   *
+   */
+  public function save($data, $options = array()) {
+
+  } // save
+
 
  /****
    REST API methods
@@ -763,6 +808,10 @@ class Model {
   public function get($options = array()) {
     // lookup data
     $data = $this->find($options);
+
+    // if there was an error the data will just be a numeric status code
+    if (is_numeric($data)) return array('status' => $data);
+
     // only return the resultset and status data in an array wrapper
     $result = array(
       'data'    => $data['resultSet'],
@@ -781,15 +830,21 @@ class Model {
    */
   public function head($options = array()) {
 
-  	return array((int)microtime(true), 'HEAD Method called.');
+  	return array(
+      'status'  => 203, 
+      'data'    => 'HEAD Method called.'
+    );
   } // head
 
   /**
-   * Create a new resource in a given collection with complete data
+   * Create a new resource in a given collection with complete or partial data
    */
   public function post($options = array()) {
 
-  	return array((int)microtime(true), 'POST Method called.');
+    return array(
+      'status'  => 203, 
+      'data'    => 'POST Method called.'
+    );
   } // post
 
   /**
@@ -797,7 +852,10 @@ class Model {
    */
   public function put($options = array()) {
 
-  	return array((int)microtime(true), 'PUT Method called.');
+    return array(
+      'status'  => 203, 
+      'data'    => 'PUT Method called.'
+    );
   } // put
 
   /**
@@ -805,7 +863,10 @@ class Model {
    */
   public function patch($options = array()) {
 
-  	return array((int)microtime(true), 'PATCH Method called.');
+    return array(
+      'status'  => 203, 
+      'data'    => 'PATCH Method called.'
+    );
   } // patch
 
   /**
@@ -813,7 +874,10 @@ class Model {
    */
   public function delete($options = array()) {
 
-  	return array((int)microtime(true), 'DELETE Method called.');
+    return array(
+      'status'  => 203, 
+      'data'    => 'DELETE Method called.'
+    );
   } // delete
 
  

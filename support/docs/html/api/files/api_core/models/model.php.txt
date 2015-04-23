@@ -71,12 +71,19 @@ class Model {
   protected $data = NULL;	
 
   /**
-   * a reference to the database connection object is passed to the constructor and stored locally
-   * as dependency injection, as are the request parameters.
+   * Class constructor.
+   * 
+   * At instantiation, the constructor stores a reference to the database connection and sets the
+   * Model name of the instance to the class name. It also retrieves the field list for the table 
+   * associated with the model. The field list is cached for future instances.
    *
-   * Takes the parsed request parameters and instantiates the models required by the request. 
-   * Request parameters are stored in each model in the chain. These options can be changed or 
-   * overridden by method calls.
+   * Options can be passed in and set as default options for the instance. These can be overridden 
+   * by passing in options to the class methods. 
+   * 
+   * @param PDO $db A reference to the database connection object (uses the PDO class).
+   * @param array $options An array of options to set as the instance defaults.
+   * @param ModelClass $parentModel (Optional) The model object this instance should be bound to.
+   *
    */
   function __construct(&$db, $options = array(), &$parentModel = NULL) {
     $this->db = $db;
@@ -134,7 +141,8 @@ class Model {
   } // getRootModel
 
   /**
-   * Finds a model in a chain of connected models.
+   * Finds a model in a chain of connected models. Not currently implemented.
+   * 
    */
   public function getModel($modelName) {
 
@@ -168,7 +176,7 @@ class Model {
 
   /**
    * Returns dump of fieldList array.
-   * @return array $fieldList
+   * @return array $fieldList Array of fields inside model database table
    */
   public function getFieldList() {
     if (empty($this->fieldList)) return false;
@@ -179,7 +187,7 @@ class Model {
 
   /**
    * Returns the name of the Primary Key field for this model's table.
-   * @return string $primaryKey
+   * @return string $primaryKey Primary Key for model's table.
    */
   public function getPrimaryKey() {
 
@@ -189,6 +197,7 @@ class Model {
 
   /**
    * Returns data variable value.
+   * @return mixed $value The requested variable.
    */
   public function getData() {
 
@@ -197,7 +206,9 @@ class Model {
   } // getData
 
   /**
-   * Sets model options.
+   * Sets model options. Will override the options set at instantiation.
+   * @param array $options Array of options to set.
+   * @return none
    */
   public function setOptions($options) {
 
@@ -209,6 +220,8 @@ class Model {
    * Get a single option parameter or NULL if it doesn't exist.
    *
    * (Options shouldn't have a NULL value; they should instead simply not exist)
+   * @param string $option Name of option to return.
+   * @return mixed $value Option value or NULL.
    */
   public function getOption($option) {
 
@@ -218,7 +231,9 @@ class Model {
   } // getOption
 
   /**
-   * Sanitize data for use in SQL query
+   * Sanitize data for use in SQL query.
+   * @param mixed $data The data to process.
+   * @return string $value A string value that has been escaped and quoted as necessary.
    */
   public function sanitize($data = NULL) {
     if (empty($data)) return false;
@@ -270,13 +285,15 @@ class Model {
    *	relatedId         FK from related (bound) model. May be single value or array of values
    *	relatedFields     Fields in bound models to return
    *
-   * Returns an array containing the following:
+   * Returns an array containing the following elements:
    *  resultSet         The fields specified (or all fields) to be retrieved
    *  PKList            Array of PKs in result set
    *  FKList            (Optional) Nested array of FKs to related models
    *  status            Result code of operation. Directly maps to HTTP status codes
    *  message           (Optional) Additional information regarding status
    *
+   * @param array $options Array of options
+   * @return array $results
    */
   public function find($options = array()) {
   	$this->trigger('beforeFind');
@@ -309,7 +326,7 @@ class Model {
         $relationshipType = $tmpModelPointer->relationships[$thisModelName]['type'];
         if (DEBUG_MODE) Message::addDebugMessage('messages', $tmpModelName.' bound to '.$thisModelName.' using '.$relationshipType);
         if ($relationshipType == 'has') {
-          // create a bucket to hold the FKs for this bound model
+          // create a bucket in the parent model to hold the FKs for this bound model
           if (!isset($this->data['FKList'])) $this->data['FKList'] = array();
           $this->data['FKList'][$tmpModelName] = array();
 
@@ -336,7 +353,7 @@ class Model {
 
       if ($this->relationships[$parentModelName]['type'] == 'belongsTo') {
         // A belongsTo B - PK in B, FK in A
-        // create a bucket to hold the FKs for this bound model
+        // create a bucket in the bound model to hold the FKs for the parent model
         if (!isset($this->data['FKList'])) $this->data['FKList'] = array();
         $this->data['FKList'][$parentModelName] = array();
         $key = $this->relationships[$parentModelName]['localKey'];
@@ -345,15 +362,17 @@ class Model {
 
       if ($this->relationships[$parentModelName]['type'] == 'HABTM') {
         // A HABTM B - FK in link table
-        $this->data['FKList'][$parentModelName] = array();
-        $key = $this->parentModel->relationships[$thisModelName]['remoteKey'];
-        $FKtableName = $this->parentModel->relationships[$thisModelName]['linkTable'];
+        // we query the link table separately later when processing bound models
+        //$this->data['FKList'][$parentModelName] = array();
+        //$key = $this->parentModel->relationships[$thisModelName]['remoteKey'];
+        //$FKtableName = $this->parentModel->relationships[$thisModelName]['linkTable'];
       } // HABTM
 
+      // add in the FK field for the models for aggregation purposes
       if (isset($this->data['FKList'][$parentModelName])) array_unshift($fields, $FKtableName.'.'.$key." AS '".$parentModelName.".FK'");
     } // if parentModel
 
-  	// add in the PK and FK fields for the models for aggregation purposes
+  	// add in the PK field for the models for aggregation purposes
   	array_unshift($fields, $this->tableName.'.'.$this->primaryKey.' AS PRI');
 
     // if type is count then just perform a count query with one field
@@ -390,11 +409,13 @@ class Model {
   	// begin building query
     $query = 'SELECT DISTINCT '. join(',',$fields) . ' FROM `'. $this->tableName .'`';
 
+    /*
     // if this is a bound HABTM, connect the link table as a join
     // (will have to benchmark this and likely tune for performance later)
     if ($this->parentModel !== NULL && $this->relationships[$parentModelName]['type'] == 'HABTM') {
       $query .= ' INNER JOIN '.$this->relationships[$parentModelName]['linkTable'].' ON ('.$this->relationships[$parentModelName]['remoteKey'].' = '.$this->relationships[$parentModelName]['localKey'].') ';
     } 
+    */
 
     // add id if passed
     if (isset($options['id'])) {
@@ -424,14 +445,20 @@ class Model {
       }
     }
 
-    // apply limit
+    // apply limit 
     if (!empty($limit)) { 
       $query .= ' LIMIT '.join(',', $limit);
     }
 
-    if (DEBUG_MODE) Message::addDebugMessage('queries', $query); // debug messages are now serialized
+    //if (DEBUG_MODE) Message::addDebugMessage('queries', $query); // debug messages are now serialized
 
     // query built, now send to server
+    $results = $this->query($query);
+    if ( is_numeric($results) ) {
+      return $results;
+    }
+
+    /*
     $results = $this->db->query($query);
 
     // if there's a query error terminate with error status
@@ -449,6 +476,7 @@ class Model {
         'message'     => 'No results matching your request were found.'
       );
     }
+    */
 
     // make short alias to resultSet
     $resultSet = &$this->data['resultSet'][$thisModelName];
@@ -481,9 +509,51 @@ class Model {
 
       $keyList = $relationshipType == 'has' ? $this->data['FKList'][$tmpModelName] : $this->data['PKList'];
 
-      $tmpData = $this->{$tmpModelName}->get(array(
-        'relatedId'    => $keyList
-      ));
+      // if there's a HABTM relationship between this model and the bound model,
+      // we need to do query the link table to retrieve the link records
+      // and bound model PKs
+      if ($relationshipType == 'HABTM') {
+        $parentModelFK = $this->relationships[$tmpModelName]['remoteKey'];
+        $boundModelFK = $tmpModelPointer->relationships[$thisModelName]['remoteKey'];
+
+        // first we query the link table to get the bound table records
+        $query = "SELECT ".$parentModelFK.
+                  ",".$boundModelFK.
+                  " FROM ".$this->relationships[$tmpModelName]['linkTable'].
+                  " WHERE ".$parentModelFK.
+                  " IN(".join(',',$keyList).")";
+        
+        $HABTMkeys = $this->query($query, array('returnAsArray' => true));
+        if (is_numeric($HABTMkeys)) {
+          return $HABTMkeys;
+        }
+        // collect the PKs for the bound model into keyList
+        $keyList = array();
+        foreach ($HABTMkeys as $tmpArray) {
+          array_push($keyList, $tmpArray[$tmpModelPointer->relationships[$thisModelName]['remoteKey']]);
+        }
+
+        if (DEBUG_MODE) Message::addDebugMessage($tmpModelName.'_HABTMkeyList', $keyList);
+      } 
+
+      if (DEBUG_MODE) Message::addDebugMessage($tmpModelName.'_HABTMData', $HABTMkeys);
+
+      // HABTM retrieves bound models based on PK
+      // other relationship types are based on FK
+      if ($relationshipType == 'HABTM') {
+        $tmpData = $this->{$tmpModelName}->find(array(
+          'id'    => $keyList
+        ));
+      } else {
+        $tmpData = $this->{$tmpModelName}->find(array(
+          'relatedId'    => $keyList
+        ));
+      }
+
+      // check result for status code rather than data
+      if (is_numeric($tmpData)) {
+        return $tmpData;
+      }
       
       if (DEBUG_MODE) Message::addDebugMessage($tmpModelName.'_getData', $tmpData);
 
@@ -492,6 +562,26 @@ class Model {
       if ($tmpModelPointer->getOption('forceUnthreaded') == true) {
         // leave data unthreaded
         $this->data['resultSet'] = array_merge($this->data['resultSet'], $tmpData['resultSet']);
+
+        if ($relationshipType == 'HABTM') {
+          // set up bucket to contain mapped results in each model item
+          foreach($this->data['resultSet'][$thisModelName] as $tmpIndex => $row) {
+            //$row[$tmpModelName] = array();
+            $this->data['resultSet'][$thisModelName][$tmpIndex][$tmpModelName] = array();
+          }
+
+          $tmpArray = array_flip($this->data['PKList']); // invert PK list to search PKs in data
+          $tmpArray2 = array_flip($tmpData['PKList']); // invert PK list to search PKs in data
+
+          // loop through HABTM keymap
+          foreach ($HABTMkeys as $row) {
+            // add only the index of the attached data array to the parent model
+            array_push(
+              $this->data['resultSet'][$thisModelName][$tmpArray[$row[$parentModelFK]]][$tmpModelName],
+              $tmpArray2[$row[$boundModelFK]]
+            );
+          }
+        } // if HABTM
 
         // remove already processed data set
         unset($tmpData['resultSet'][$tmpModelName]); 
@@ -534,6 +624,19 @@ class Model {
 
         } 
         if ($relationshipType == 'HABTM') {
+          $tmpArray = array_flip($this->data['PKList']); // invert PK list to search PKs in data
+          $tmpArray2 = array_flip($tmpData['PKList']); // invert PK list to search PKs in data
+
+          // loop through HABTM keymap
+          foreach ($HABTMkeys as $row) {
+
+            //if (DEBUG_MODE) Message::addDebugMessage('messages', 'Adding '.$tmpModelName.' element '.$tmpIndex.' to '.$thisModelName.' element '.$tmpArray[$tmpFK]);
+
+            array_push(
+              $this->data['resultSet'][$thisModelName][$tmpArray[$row[$parentModelFK]]][$tmpModelName],
+              $tmpData['resultSet'][$tmpModelName][$tmpArray2[$row[$boundModelFK]]]
+            );
+          }
 
         } 
 
@@ -548,6 +651,26 @@ class Model {
         //$this->data['resultSet'][$tmpModelName] = $tmpData['resultSet'][$tmpModelName];
         $this->data['resultSet'] = array_merge($this->data['resultSet'], $tmpData['resultSet']);
         
+        if ($relationshipType == 'HABTM') {
+          // set up bucket to contain mapped results in each model item
+          foreach($this->data['resultSet'][$thisModelName] as $tmpIndex => $row) {
+            //$row[$tmpModelName] = array();
+            $this->data['resultSet'][$thisModelName][$tmpIndex][$tmpModelName] = array();
+          }
+
+          $tmpArray = array_flip($this->data['PKList']); // invert PK list to search PKs in data
+          $tmpArray2 = array_flip($tmpData['PKList']); // invert PK list to search PKs in data
+
+          // loop through HABTM keymap
+          foreach ($HABTMkeys as $row) {
+            // add only the index of the attached data array to the parent model
+            array_push(
+              $this->data['resultSet'][$thisModelName][$tmpArray[$row[$parentModelFK]]][$tmpModelName],
+              $tmpArray2[$row[$boundModelFK]]
+            );
+          }
+        } // if HABTM
+
         // remove already processed data set
         unset($tmpData['resultSet'][$tmpModelName]); 
       } // collation
@@ -569,13 +692,16 @@ class Model {
    * @param string $query The query to send to the server.
    *
    * @param array $options An array of options. Valid options are:
+   * 
    * returnAsArray  - Returns an array containing the result set data. Valid values are
    * true and false (default).
-   * fetch-style  - Determines whether the array returned when using returnAsArray is 
-   * numeric, associative (default), or both. Valid values are 'num', 'assoc', and 'both'. 
+   * 
+   * fetchStyle  - Determines whether the array returned when using returnAsArray is 
+   * numeric, associative (default), an array with both numeric and associative keys, or as 
+   * an object. Valid values are 'num', 'assoc', 'both', and 'obj'. 
    *
-   * @return mixed $result The default return value is a reference to the result set on the 
-   * server. 
+   * @return mixed $result The default return value is a PDOStatement object referencing the 
+   * result set on the server. 
    *
    * On a query error or if the result set is empty, an associative array will
    * be returned with two keys: status, which is an HTTP response code (400 if there is 
@@ -584,31 +710,76 @@ class Model {
    *
    * If the 'returnAsArray' option is set to true, the results will be returned as an array
    * formatted per the fetch-style option.
+   * 
    */
   public function query($query, $options = array()) {
+    // merge options with defaults
+    $options = array_merge(
+      array(
+        'returnAsArray'   => false,
+        'fetchStyle'      => 'assoc'
+      ),
+      $options
+    );
 
     if (DEBUG_MODE) Message::addDebugMessage('queries', $query);
-    
+
     // query built, now send to server
     $results = $this->db->query($query);
 
     // if there's a query error terminate with error status
     if ($results == false) {
-      return array(
-        'status'      => 400,
-        'message'     => 'Query error. Please check request parameters.'
-      );
+      if (DEBUG_MODE) Message::addDebugMessage('errorMessage', 'Query error. Please check request parameters.');
+      return 400;
     }
+
+    $found_rows = $this->db->query("SELECT FOUND_ROWS()")->fetchColumn();
 
     // if the result set is empty terminate with error status
-    if ($this->db->query("SELECT FOUND_ROWS()")->fetchColumn() == 0) {
-      return array(
-        'status'      => 404,
-        'message'     => 'No results matching your request were found.'
-      );
+    if ($found_rows == 0) {
+      if (DEBUG_MODE) Message::addDebugMessage('errorMessage', 'No results matching your request were found.');
+      return 404;
     }
 
+    if (DEBUG_MODE) Message::addDebugMessage('found_rows', $found_rows);
+
+    if (!$options['returnAsArray']) return $results;
+
+    if (strtolower($options['fetchStyle']) == 'num') return $results->fetchAll(PDO::FETCH_NUM);
+    if (strtolower($options['fetchStyle']) == 'assoc') return $results->fetchAll(PDO::FETCH_ASSOC);
+    if (strtolower($options['fetchStyle']) == 'both') return $results->fetchAll(PDO::FETCH_BOTH);
+    if (strtolower($options['fetchStyle']) == 'obj') return $results->fetchAll(PDO::FETCH_OBJ);
+
+
   } // query
+
+  /**
+   * Saves model data
+   * 
+   * The model data should be structured as a nested array. The topmost array should be the model name.
+   * Table fields are then elements inside the model array.
+   *
+   * For example, suppose we have a model Contacts whose table columns include firstname, lastname, and 
+   * email. The array structure should look like this:
+   *
+   * array('Contacts' => array(
+   *    'firstname' => 'John',
+   *    'lastname' => 'Doe',
+   *    'email' => 'johndoe@email.com'
+   * ))
+   * 
+   * Note that the absence of the table's primary key field will result in a new record being created in 
+   * the table. If the primary key is included, then the function will update the record specified by the 
+   * primary key.
+   *
+   * Models can be associated together by nesting the related model within the 'parent' model. 
+   *
+   * The options array contains options that control the behavior of the save operation.
+   *
+   */
+  public function save($data, $options = array()) {
+
+  } // save
 
 
  /****
@@ -635,7 +806,14 @@ class Model {
    *
    */
   public function get($options = array()) {
-    return $this->find($options);
+    // lookup data
+    $data = $this->find($options);
+    // only return the resultset and status data in an array wrapper
+    $result = array(
+      'data'    => $data['resultSet'],
+      'status'  => $data['status']
+    );
+    return $result;
   } // get
 
   /**

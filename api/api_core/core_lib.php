@@ -257,7 +257,7 @@ class Dispatcher {
 		$method = strtolower($_SERVER['REQUEST_METHOD']);
 		$requestData = $rootModel->{$method}($requestOptions);
 
-		Message::setResponse($requestData['data']); // sets response body data
+		if (!empty($requestData['data'])) Message::setResponse($requestData['data']); // sets response body data
 		Message::setHTTPStatus($requestData['status']); // set HTTP status code
 		Message::render(); // render output to user agent
 

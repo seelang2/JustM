@@ -1,0 +1,320 @@
+<!doctype html>
+<html>
+<head>
+	<meta charset="UTF-8" />
+	<title>Sample CRUD Test App</title>
+	<style type="text/css">
+	body {
+		font-family: Verdana, Arial, sans-serif;
+		color: #000;
+	}
+
+	form label {
+		display: block;
+		margin-bottom: 0.5em;
+	}
+
+	form label span,
+	form label input {
+		display: inline-block;
+	}
+
+	form label span { width: 10em;}
+
+	.modal {
+		border: 1px solid #ccc;
+		padding: 10px 25px;
+	}
+
+	.template {
+		display: none;
+	}
+
+	</style>
+</head>
+<body>
+
+<div id="main"></div>
+
+<div data-templatename="projectform" class="modal template">
+<button class="btnCloseModal">Close</button>
+
+<h1>New Project</h1>
+<form action="#" class="item" data-collection="projects" data-requestmethod="POST">
+	<input type="hidden" name="Projects[user_id]" value="1" />
+	<label>
+		<span>Project Name:</span>
+		<input name="Projects[name]" />
+	</label>
+	<label>
+		<span>Description:</span>
+		<input name="Projects[description]" />
+	</label>
+	<button class="btnSave">Save</button>
+</form>
+</div>
+
+<div data-templatename="projectview" class="modal item template">
+<button class="btnCloseModal">Close</button>
+
+<h1>View Project</h1>
+	<div>
+		<span>Project Name:</span>
+		<span data-fieldname="name"></span>
+	</div>
+	<div>
+		<span>Description:</span>
+		<span data-fieldname="description"></span>
+	</div>
+	<h2>Timeslips</h2>
+	<div id="projecttimeslips"></div>
+</div>
+
+<div data-templatename="timesliplistitem" class="item template">
+	<span data-fieldname="rolename"></span>
+	<span data-fieldname="time_start"></span>
+	<span data-fieldname="time_stop"></span>
+	<span data-fieldname="duration"></span>
+</div>
+
+
+<script type="text/javascript" src="jquery-2.1.0.min.js"></script>
+<script type="text/javascript">
+// use an IIFE as a namespacing shell
+(function(App) {
+
+var DEBUG_ON = true;
+
+// Auth not set up, hardcode user
+var user = {
+	id: 1
+};
+
+var $main = 
+$('#main')
+	.before('<div />');
+
+var $templates = {}; // template bucket
+
+// given an array of objects, find the index of the object whose element is value
+// note: not added to Array.prototype because DON'T MODIFY OBJECTS YOU DON'T OWN
+var findIndexOfObj = function(srcArray, element, value) {
+	for(var c = 0; c < srcArray.length; c++) {
+		if (srcArray[c][element] == value) return c;
+	}
+}
+
+App.init = function() {
+
+	// set up templates 
+	$('.template')
+		.each(function(i, element) {
+			var id = $(element).attr('data-templatename');
+			$templates[id] = $(element).removeClass('template');
+		 })
+		.remove();
+
+	App.showProjectList();
+
+	$(document.body)
+		.on('click','button', App.mainClickHandler);
+
+}; // App.init
+
+App.mainClickHandler = function(e) {
+	e.preventDefault();
+	var $this = $(this);
+	var data = $this.closest('.item').data('data');
+
+	switch(true) {
+		case $this.hasClass('btnView'):
+			App.viewProject(data);
+		break;
+
+		case $this.hasClass('btnDelete'):
+
+		break;
+
+		case $this.hasClass('btnSave'):
+			App.saveItem($this.closest('.item'));
+		break;
+
+		case $this.hasClass('btnCloseModal'):
+			App.closeModal($this.closest('.modal'));
+		break;
+
+		case $this.hasClass('btnAddProject'):
+			App.displayNewProjectForm();
+		break;
+
+	} // switch
+
+} // App.mainClickHandler
+
+App.getData = function(options) {
+	return $.ajax(options);
+}; // App.getData
+
+// assumes $template contains elements with 'data-fieldname' attribute 
+// matching data array elements
+// I *could* make this a jQuery plugin to eliminate the $template param
+App.mergeData = function($template, data) {
+
+	$template
+		.find('[data-fieldname]')
+		.each(function(index, element) {
+			var fieldName = $(element).attr('data-fieldname');
+			$(element).html(data[fieldName]);
+		 })
+}; // App.mergeData
+
+App.closeModal = function($target) {
+	$target.remove();
+}; // App.closeModal
+
+App.showProjectList = function() {
+
+	App.getData({
+		url: 		'api/projects',
+		type: 		'get',
+		dataType: 	'json'
+	})
+	 .done(function(data) {
+	 	data = DEBUG_ON? data['response'] : data;
+	 	console.log(data);
+
+	 	$main.empty();
+
+	 	var $tbody = 
+	 	$('<table><tbody /></table>')
+	 		.attr('id', 'projects')
+	 		.prepend('<thead />')
+	 		.find('thead')
+	 		.each(function(i, $thead) {
+			 	var $tr = $('<tr />');
+			 	$.each(data['projects'][0], function(fieldName, fieldValue) {
+	 			$('<th />')
+	 				.append(fieldName)
+	 				.appendTo($tr);
+			 	});
+			 	$tr.append('<th>Options</th>').appendTo($thead);
+	 		 })
+	 		.end()
+	 		.find('tbody');
+
+	 	
+	 	$.each(data['projects'], function(index, project) {
+	 		var $tr = 
+	 		$('<tr />')
+	 			.addClass('item')
+	 			.data('data', project)
+	 			.addClass(index % 2 == 0? 'oddrow' : 'evenrow');
+
+	 		$.each(project, function(fieldName, fieldValue) {
+	 			$('<td />')
+	 				.append(fieldValue)
+	 				.appendTo($tr);
+	 		});
+
+	 		$tr
+	 			.append('<th>'+
+	 						'<button class="btnView">View</button>' + 
+	 						'<button class="btnDelete">Delete</button>' + 
+	 					'</th>')
+	 			.appendTo($tbody);
+	 	});
+
+	 	$tbody.parent().appendTo($main);
+
+	 }); // done
+
+	 $main
+	 	.prev('div')
+	 	.empty()
+	 	.append('<p><button class="btnAddProject">New Project</button></p>');
+
+
+}; // App.showProjectList
+
+App.viewProject = function(project) {
+	var $projectView = $templates['projectview'].clone();
+
+	var $projecttimeslips = $projectView.find('#projecttimeslips');
+
+	//App.mergeData($view, project);
+
+	var id = project['id'];
+
+	App.getData({
+		url: 		'api/projects/'+id+'/timeslips?attach=roles',
+		type: 		'get',
+		dataType: 	'json'
+	})
+	 .done(function(data) {
+	 	data = DEBUG_ON? data['response'] : data;
+	 	console.log(data);
+
+	 	// move the merge to down here since we're probably doing a detail view and need
+	 	// more fields than was supplied in the list view
+	 	App.mergeData($projectView, data['projects'][0]);
+
+		$projectView
+			.data('data', project)
+			.prependTo(document.body);
+
+	 	// go through timeslips list for this project
+	 	$.each(
+	 		data['projects'][0]['timeslips'],
+	 		function(i, timeslip) {
+	 			var $timeslipView = $templates['timesliplistitem'].clone();
+	 			App.mergeData($timeslipView, timeslip);
+
+	 			var roleId = findIndexOfObj(data['roles'], 'id', timeslip['role_id']);
+
+				$timeslipView
+					.data('data', timeslip)
+					.find('[data-fieldname="rolename"]')
+					.html(data['roles'][roleId]['name'])
+					.end()
+					.appendTo($projecttimeslips);
+
+	 		}
+	 	);
+
+	  }); // done
+
+}; // App.viewProject
+
+App.displayNewProjectForm = function() {
+	$templates['projectform']
+		.clone()
+		.prependTo(document.body);
+}; // App.displayNewProjectForm
+
+App.saveItem = function($item) {
+	var collection = $item.attr('data-collection');
+	var id = $item.attr('data-id');
+
+	var url = 'api/' + collection + (id === null ? '' : '/' + id);
+
+	$.ajax({
+		url: 		url,
+		type: 		$item.attr('data-requestmethod'),
+		dataType: 	'json',
+		data: 		$item.serialize()
+	}).done(function(data) {
+
+
+
+	});
+}; // App.saveItem
+
+})(window.App = window.App || {});
+
+// attach App init to document.ready
+$(document).ready(App.init);
+
+
+</script>
+</body>
+</html>
